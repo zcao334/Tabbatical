@@ -66,8 +66,17 @@ function renderEntry(entry: DigestEntry, onKeep: (tabId: number) => void): HTMLL
   return li;
 }
 
+// Renders can overlap (a manual re-render after "Keep" races with the
+// chrome.storage.onChanged listener firing for the same write). Since
+// buildDigest() is async, an older render can otherwise resolve after a
+// newer one and overwrite the DOM with stale data. Track the latest
+// requested render and drop the result of any call that's been superseded.
+let latestRenderId = 0;
+
 export async function renderDigest(container: HTMLElement): Promise<void> {
+  const renderId = ++latestRenderId;
   const entries = await buildDigest();
+  if (renderId !== latestRenderId) return;
 
   container.innerHTML = '';
 
