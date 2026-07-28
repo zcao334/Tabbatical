@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Review",
+  "version": "0.1.0",
+  "description": "Proactively review your open tabs and decide what to keep.",
+  "permissions": ["tabs", "tabGroups", "storage", "alarms", "sidePanel"],
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "src/sidepanel/index.html"
+  },
+  "action": {
+    "default_title": "Open Tab Review"
+  },
+  "icons": {
+    "16": "src/icons/icon16.png",
+    "48": "src/icons/icon48.png",
+    "128": "src/icons/icon128.png"
+  }
+}
