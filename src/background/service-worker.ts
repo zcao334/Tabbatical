@@ -3,7 +3,7 @@ import { getTabActivityMap, removeTabActivity, setTabActivity } from '../shared/
 
 // A tab must stay active continuously for this long before it's recorded —
 // filters out incidental alt-tab flicker from counting as a real visit.
-const ACTIVE_DWELL_MS = 15_000;
+const ACTIVE_DWELL_MS = 7_000;
 
 // Tracks each window's most-recently-*committed* tab (i.e. one that cleared
 // the dwell threshold) so a revisit only counts against confirmed activity,
