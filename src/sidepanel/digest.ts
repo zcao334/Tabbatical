@@ -1,6 +1,12 @@
 import { computeStaleness } from '../shared/staleness';
 import { getTabActivityMap, patchTabActivity } from '../shared/storage';
 import type { TabActivity } from '../shared/types';
+import { isInjectableUrl, requestHostPermission } from '../shared/permissions';
+import {
+  ARCHIVE_TAB_REQUEST,
+  type ArchiveTabRequest,
+  type ArchiveTabResponse,
+} from '../shared/messages';
 
 interface DigestEntry {
   activity: TabActivity;
@@ -38,7 +44,12 @@ function formatDaysIdle(lastActiveAt: number): string {
   return `${Math.floor(days)}d idle`;
 }
 
-function renderEntry(entry: DigestEntry, onKeep: (tabId: number) => void): HTMLLIElement {
+interface EntryActions {
+  onKeep: (tabId: number) => void;
+  onArchive: (activity: TabActivity) => void;
+}
+
+function renderEntry(entry: DigestEntry, actions: EntryActions): HTMLLIElement {
   const li = document.createElement('li');
   li.className = 'tab-item';
 
@@ -60,10 +71,70 @@ function renderEntry(entry: DigestEntry, onKeep: (tabId: number) => void): HTMLL
   const keepButton = document.createElement('button');
   keepButton.className = 'keep-button';
   keepButton.textContent = 'Keep';
-  keepButton.addEventListener('click', () => onKeep(entry.activity.tabId));
+  keepButton.addEventListener('click', () => actions.onKeep(entry.activity.tabId));
   li.appendChild(keepButton);
 
+  const archiveButton = document.createElement('button');
+  archiveButton.className = 'archive-button';
+  const archiving = archivingTabIds.has(entry.activity.tabId);
+  archiveButton.textContent = archiving ? 'Archiving…' : 'Archive';
+  archiveButton.disabled = archiving;
+  archiveButton.addEventListener('click', () => actions.onArchive(entry.activity));
+  li.appendChild(archiveButton);
+
+  if (failedTabIds.has(entry.activity.tabId)) {
+    const error = document.createElement('div');
+    error.className = 'tab-error';
+    error.textContent = "Couldn't archive";
+    li.appendChild(error);
+  }
+
   return li;
+}
+
+/**
+ * In-flight and failed state lives outside the DOM because renderDigest()
+ * rebuilds the whole list — and archiving triggers storage writes that cause
+ * exactly such a re-render, which would otherwise wipe a button's disabled
+ * state mid-operation.
+ */
+const archivingTabIds = new Set<number>();
+const failedTabIds = new Set<number>();
+
+async function archiveTab(activity: TabActivity, container: HTMLElement): Promise<void> {
+  if (archivingTabIds.has(activity.tabId)) return;
+
+  // Requested first thing in the click handler, with no await ahead of it, so
+  // the user gesture is still valid. Already-granted origins resolve without
+  // prompting, so there's no need to check first. Non-http pages (chrome://)
+  // skip this entirely and fall through to a metadata-only archive.
+  if (isInjectableUrl(activity.url)) {
+    const granted = await requestHostPermission(activity.url);
+    if (!granted) return;
+  }
+
+  archivingTabIds.add(activity.tabId);
+  failedTabIds.delete(activity.tabId);
+  await renderDigest(container);
+
+  let response: ArchiveTabResponse | undefined;
+  try {
+    response = await chrome.runtime.sendMessage<ArchiveTabRequest, ArchiveTabResponse>({
+      type: ARCHIVE_TAB_REQUEST,
+      tabId: activity.tabId,
+    });
+  } catch (error) {
+    console.error('[Tab Review] Archive request failed', error);
+  }
+
+  archivingTabIds.delete(activity.tabId);
+  if (response?.status === 'failed' || !response) {
+    failedTabIds.add(activity.tabId);
+  }
+
+  // On success the tab closes, which prunes the tracking map and re-renders
+  // via the storage listener; this covers the cancelled and failed paths.
+  await renderDigest(container);
 }
 
 // Renders can overlap (a manual re-render after "Keep" races with the
@@ -90,9 +161,12 @@ export async function renderDigest(container: HTMLElement): Promise<void> {
 
   for (const entry of entries) {
     container.appendChild(
-      renderEntry(entry, async (tabId) => {
-        await patchTabActivity(tabId, { lastActiveAt: Date.now() });
-        await renderDigest(container);
+      renderEntry(entry, {
+        onKeep: async (tabId) => {
+          await patchTabActivity(tabId, { lastActiveAt: Date.now() });
+          await renderDigest(container);
+        },
+        onArchive: (activity) => void archiveTab(activity, container),
       }),
     );
   }

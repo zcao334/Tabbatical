@@ -1,7 +1,8 @@
 import type { TabActivity } from '../shared/types';
 import { getTabActivityMap, removeTabActivity, setTabActivity } from '../shared/storage';
-import { isExtractTabRequest } from '../shared/messages';
+import { isArchiveTabRequest, isExtractTabRequest } from '../shared/messages';
 import { extractTabContent } from './extraction';
+import { archiveTab } from './archive';
 
 // A tab must stay active continuously for this long before it's recorded —
 // filters out incidental alt-tab flicker from counting as a real visit.
@@ -119,10 +120,16 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (!isExtractTabRequest(message)) return;
   // Only claim the response channel for messages we actually handle —
   // returning true unconditionally would leave other senders awaiting a
   // reply that never comes.
-  extractTabContent(message.tabId).then(sendResponse);
-  return true;
+  if (isArchiveTabRequest(message)) {
+    archiveTab(message.tabId).then(sendResponse);
+    return true;
+  }
+  if (isExtractTabRequest(message)) {
+    extractTabContent(message.tabId).then(sendResponse);
+    return true;
+  }
+  return;
 });

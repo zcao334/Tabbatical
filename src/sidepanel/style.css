@@ -28,6 +28,7 @@ h1 {
 .tab-item {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 8px;
   border: 1px solid #dadce0;
@@ -55,7 +56,8 @@ h1 {
   text-overflow: ellipsis;
 }
 
-.keep-button {
+.keep-button,
+.archive-button {
   font-size: 12px;
   padding: 4px 10px;
   border: 1px solid #dadce0;
@@ -64,8 +66,20 @@ h1 {
   cursor: pointer;
 }
 
-.keep-button:hover {
+.keep-button:hover,
+.archive-button:hover:not(:disabled) {
   background: #f1f3f4;
+}
+
+.archive-button:disabled {
+  color: #80868b;
+  cursor: default;
+}
+
+.tab-error {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: #c5221f;
 }
 
 .empty-state {

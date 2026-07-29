@@ -47,3 +47,27 @@ export function isExtractTabRequest(value: unknown): value is ExtractTabRequest 
     typeof (value as { tabId?: unknown }).tabId === 'number'
   );
 }
+
+export const ARCHIVE_TAB_REQUEST = 'tab-review:archive-tab';
+
+/** Asks the background to capture a tab into the archive and close it. */
+export interface ArchiveTabRequest {
+  type: typeof ARCHIVE_TAB_REQUEST;
+  tabId: number;
+}
+
+export type ArchiveTabResponse =
+  /** Stored and closed. `hasFullText` is false for metadata-only captures. */
+  | { status: 'archived'; hasFullText: boolean }
+  /** User declined host access; nothing was stored and the tab is untouched. */
+  | { status: 'cancelled' }
+  | { status: 'failed' };
+
+export function isArchiveTabRequest(value: unknown): value is ArchiveTabRequest {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { type?: unknown }).type === ARCHIVE_TAB_REQUEST &&
+    typeof (value as { tabId?: unknown }).tabId === 'number'
+  );
+}

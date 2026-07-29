@@ -1,4 +1,5 @@
 import { isExtractionResultMessage, type ExtractedContent } from '../shared/messages';
+import { hasHostPermission, isInjectableUrl } from '../shared/permissions';
 
 /**
  * Long enough that a slow machine or a heavy page doesn't fail spuriously,
@@ -20,35 +21,6 @@ export type ExtractionOutcome =
   | { status: 'unsupported' }
   /** Injection error or timeout. */
   | { status: 'failed' };
-
-/** Only http(s) pages can be scripted; everything else is off-limits to extensions. */
-export function isInjectableUrl(url: string): boolean {
-  return /^https?:\/\//i.test(url);
-}
-
-function originPatternFor(url: string): string | null {
-  try {
-    return `${new URL(url).origin}/*`;
-  } catch {
-    return null;
-  }
-}
-
-export async function hasHostPermission(url: string): Promise<boolean> {
-  const origin = originPatternFor(url);
-  if (!origin) return false;
-  return chrome.permissions.contains({ origins: [origin] });
-}
-
-/**
- * Must be called from a user gesture (Chrome rejects it otherwise), so this
- * belongs to the side panel's archive click, not to background logic.
- */
-export async function requestHostPermission(url: string): Promise<boolean> {
-  const origin = originPatternFor(url);
-  if (!origin) return false;
-  return chrome.permissions.request({ origins: [origin] });
-}
 
 /**
  * Emitted by the buildExtractor plugin in vite.config.ts at a fixed,
