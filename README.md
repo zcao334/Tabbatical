@@ -19,6 +19,10 @@ npm run build   # production build to dist/
 npm test        # vitest unit tests
 ```
 
+The on-demand content extractor is bundled separately (see `buildExtractor` in
+`vite.config.ts`) because it's injected at runtime rather than declared in the
+manifest. Use `npm run build` when testing anything that archives a page.
+
 ## Loading the extension in Chrome
 
 1. `npm run build`
