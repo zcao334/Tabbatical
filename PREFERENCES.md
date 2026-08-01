@@ -17,8 +17,11 @@ before starting new work; add to it whenever a preference is stated.
 
 ## Git workflow
 
-- Never commit directly to `main` — it's treated as protected. Work on `dev` or
-  a feature branch, and only merge when explicitly asked.
+- Never commit directly to `main` — it's treated as protected. Reach it by
+  merging from `dev`, and only when explicitly asked.
+- **Work on `dev` by default.** Don't create a feature branch for new work
+  unless asked; commit straight to `dev` and leave merging to `main` for an
+  explicit request.
 
 ## Debugging
 
