@@ -22,6 +22,13 @@ before starting new work; add to it whenever a preference is stated.
 - **Work on `dev` by default.** Don't create a feature branch for new work
   unless asked; commit straight to `dev` and leave merging to `main` for an
   explicit request.
+- **Audit for duplicated functionality before merging into `main`.** A merge is
+  the point where parallel work converges, so recheck whether anything being
+  merged duplicates logic that already exists. If it does, don't resolve it
+  unilaterally — surface it and ask how to integrate the two. This is the
+  "check existing code first" rule above applied deliberately at the merge
+  boundary, where near-duplicates are easiest to miss and most expensive to
+  leave in.
 
 ## Debugging
 
