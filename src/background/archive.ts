@@ -30,7 +30,10 @@ export function buildArchiveEntry(
     url,
     title: content?.title || tab.title?.trim() || url,
     hasFullText: Boolean(content?.textContent),
-    faviconUrl: tab.favIconUrl,
+    // Chrome leaves favIconUrl undefined more often than the docs suggest
+    // (icon not yet loaded, restored-but-unvisited tabs), so fall back to the
+    // icon the extractor read out of the page itself.
+    faviconUrl: tab.favIconUrl?.trim() || content?.faviconUrl,
     extractedText: content?.textContent,
     excerpt: content?.excerpt,
     byline: content?.byline,

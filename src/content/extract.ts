@@ -1,4 +1,5 @@
-import { Readability } from '@mozilla/readability';
+import { Readability, isProbablyReaderable } from '@mozilla/readability';
+import { isArticleLike } from '../shared/article-quality';
 import { MAX_EXTRACTED_TEXT_LENGTH } from '../shared/types';
 import {
   EXTRACTION_RESULT,
@@ -26,15 +27,61 @@ function orUndefined(value: string | null | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+/**
+ * The page's own favicon, as an absolute URL.
+ *
+ * A fallback for chrome.tabs.Tab.favIconUrl, which Chrome leaves undefined
+ * often enough that the archive would otherwise have no icon to show. Falls
+ * back to /favicon.ico, the location browsers probe when a page declares no
+ * icon at all.
+ */
+function findFaviconUrl(): string | undefined {
+  const link = document.querySelector<HTMLLinkElement>(
+    'link[rel~="icon" i], link[rel="shortcut icon" i], link[rel="apple-touch-icon" i]',
+  );
+  const href = link?.getAttribute('href');
+
+  try {
+    return href
+      ? new URL(href, document.baseURI).href
+      : new URL('/favicon.ico', location.origin).href;
+  } catch {
+    return undefined;
+  }
+}
+
 function extract(): ExtractedContent | null {
+  const faviconUrl = findFaviconUrl();
+
+  // Cheap structural pre-filter. Catches the clear non-articles without
+  // paying for a full parse; the quality gate below catches what it misses.
+  if (!isProbablyReaderable(document)) {
+    return { title: orUndefined(document.title), faviconUrl };
+  }
+
   // Readability strips and rewrites the document it parses, so hand it a
   // detached clone. Parsing the live document would visibly gut the page
   // in front of the user before the tab is archived.
   const clone = document.cloneNode(true) as Document;
   const article = new Readability(clone).parse();
-  if (!article) return null;
+
+  // Metadata is worth keeping even when there's no article, so every
+  // rejection below still returns a populated object.
+  const metadataOnly: ExtractedContent = {
+    title: orUndefined(article?.title) ?? orUndefined(document.title),
+    siteName: orUndefined(article?.siteName),
+    excerpt: orUndefined(article?.excerpt),
+    faviconUrl,
+  };
+  if (!article) return metadataOnly;
 
   const text = normalizeWhitespace(article.textContent ?? '');
+
+  // Parsed inert via DOMParser rather than by assigning innerHTML to a
+  // detached element — an inert document never fetches the images and other
+  // subresources the markup references.
+  const parsed = new DOMParser().parseFromString(article.content ?? '', 'text/html');
+  if (!isArticleLike(parsed.body, text)) return metadataOnly;
 
   return {
     title: orUndefined(article.title),
@@ -42,6 +89,7 @@ function extract(): ExtractedContent | null {
     siteName: orUndefined(article.siteName),
     excerpt: orUndefined(article.excerpt),
     textContent: orUndefined(text.slice(0, MAX_EXTRACTED_TEXT_LENGTH)),
+    faviconUrl,
   };
 }
 

@@ -1,10 +1,17 @@
-/** Content the extractor pulled off a page, before it becomes an ArchiveEntry. */
+/**
+ * Content the extractor pulled off a page, before it becomes an ArchiveEntry.
+ *
+ * `textContent` is absent whenever the page isn't an article — the other
+ * fields are still worth keeping, so a non-article page yields a populated
+ * object rather than nothing at all.
+ */
 export interface ExtractedContent {
   title?: string;
   byline?: string;
   siteName?: string;
   excerpt?: string;
   textContent?: string;
+  faviconUrl?: string;
 }
 
 export const EXTRACTION_RESULT = 'tab-review:extraction-result';

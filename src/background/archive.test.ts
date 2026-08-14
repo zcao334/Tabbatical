@@ -53,6 +53,33 @@ describe('buildArchiveEntry', () => {
     expect(entry?.faviconUrl).toBe(tab.favIconUrl);
   });
 
+  it('falls back to the page favicon when Chrome reports none', () => {
+    const entry = buildArchiveEntry(
+      { ...tab, favIconUrl: undefined },
+      { status: 'extracted', content: { faviconUrl: 'https://example.com/page-icon.png' } },
+    );
+
+    expect(entry?.faviconUrl).toBe('https://example.com/page-icon.png');
+  });
+
+  it("prefers Chrome's favicon over the page's when both are present", () => {
+    const entry = buildArchiveEntry(tab, {
+      status: 'extracted',
+      content: { faviconUrl: 'https://example.com/page-icon.png' },
+    });
+
+    expect(entry?.faviconUrl).toBe(tab.favIconUrl);
+  });
+
+  it('treats a blank favIconUrl as absent rather than storing whitespace', () => {
+    const entry = buildArchiveEntry(
+      { ...tab, favIconUrl: '   ' },
+      { status: 'extracted', content: { faviconUrl: 'https://example.com/page-icon.png' } },
+    );
+
+    expect(entry?.faviconUrl).toBe('https://example.com/page-icon.png');
+  });
+
   it('treats an extraction with no text as metadata-only', () => {
     const entry = buildArchiveEntry(tab, {
       status: 'extracted',
