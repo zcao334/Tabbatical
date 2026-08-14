@@ -1,5 +1,10 @@
 import type { TabActivity } from '../shared/types';
-import { getTabActivityMap, removeTabActivity, setTabActivity } from '../shared/storage';
+import {
+  getTabActivityMap,
+  removeTabActivity,
+  replaceTabActivity,
+  setTabActivity,
+} from '../shared/storage';
 import { isArchiveTabRequest, isExtractTabRequest } from '../shared/messages';
 import { extractTabContent } from './extraction';
 import { archiveTab } from './archive';
@@ -117,6 +122,17 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   await removeTabActivity(tabId);
+});
+
+// Discarding a tab swaps it for a new one with a different id, and fires this
+// instead of onRemoved. These are precisely the idle tabs the digest surfaces,
+// so without migrating the id, archiving the tabs most likely to be archived
+// would fail on a stale id.
+chrome.tabs.onReplaced.addListener(async (addedTabId, removedTabId) => {
+  lastActiveTabIdByWindow.forEach((tabId, windowId) => {
+    if (tabId === removedTabId) lastActiveTabIdByWindow.set(windowId, addedTabId);
+  });
+  await replaceTabActivity(removedTabId, addedTabId);
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
