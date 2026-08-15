@@ -7,6 +7,8 @@
  * from drifting apart as search (#6) and restore (#7) land on the archive.
  */
 
+import type { Snippet } from '../shared/types';
+
 export interface RowAction {
   label: string;
   onClick: () => void;
@@ -22,9 +24,37 @@ export interface RowOptions {
   faviconUrl?: string;
   /** Small label beside the title, e.g. marking an entry as metadata-only. */
   badge?: string;
+  /** Matched page text with the search term highlighted. */
+  snippet?: Snippet;
   /** Error text shown under the row, e.g. a failed archive. */
   error?: string;
   actions?: RowAction[];
+}
+
+/**
+ * A snippet with its matched term marked.
+ *
+ * Built from three text nodes rather than an innerHTML string with <mark> tags
+ * spliced in: this text comes from an arbitrary archived page, and the offsets
+ * come from a user-typed query, so neither is safe to treat as markup. Offsets
+ * are clamped because a malformed Snippet should degrade to plain text rather
+ * than throw mid-render.
+ */
+function createSnippet(snippet: Snippet): HTMLElement {
+  const el = document.createElement('div');
+  el.className = 'row-snippet';
+
+  const start = Math.max(0, Math.min(snippet.matchStart, snippet.text.length));
+  const end = Math.max(start, Math.min(start + snippet.matchLength, snippet.text.length));
+
+  el.appendChild(document.createTextNode(snippet.text.slice(0, start)));
+
+  const mark = document.createElement('mark');
+  mark.textContent = snippet.text.slice(start, end);
+  el.appendChild(mark);
+
+  el.appendChild(document.createTextNode(snippet.text.slice(end)));
+  return el;
 }
 
 /**
@@ -77,6 +107,8 @@ export function createEntryRow(options: RowOptions): HTMLLIElement {
   meta.className = 'row-meta';
   meta.textContent = options.meta;
   info.appendChild(meta);
+
+  if (options.snippet) info.appendChild(createSnippet(options.snippet));
 
   li.appendChild(info);
 

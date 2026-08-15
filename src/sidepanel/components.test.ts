@@ -45,6 +45,40 @@ describe('createEntryRow', () => {
     expect(row.querySelector('button')?.disabled).toBe(true);
   });
 
+  it('highlights the matched span of a snippet', () => {
+    const row = createEntryRow({
+      title: 'T',
+      meta: 'm',
+      snippet: { text: 'fold the flour in', matchStart: 9, matchLength: 5 },
+    });
+
+    expect(row.querySelector('mark')?.textContent).toBe('flour');
+    expect(row.querySelector('.row-snippet')?.textContent).toBe('fold the flour in');
+  });
+
+  it('treats snippet text as text, never markup', () => {
+    // Snippet text comes from an arbitrary archived page.
+    const row = createEntryRow({
+      title: 'T',
+      meta: 'm',
+      snippet: { text: '<script>alert(1)</script> hit', matchStart: 26, matchLength: 3 },
+    });
+
+    expect(row.querySelector('script')).toBeNull();
+    expect(row.querySelector('mark')?.textContent).toBe('hit');
+  });
+
+  it('degrades to plain text when snippet offsets are out of range', () => {
+    const row = createEntryRow({
+      title: 'T',
+      meta: 'm',
+      snippet: { text: 'short', matchStart: 99, matchLength: 99 },
+    });
+
+    expect(row.querySelector('.row-snippet')?.textContent).toBe('short');
+    expect(row.querySelector('mark')?.textContent).toBe('');
+  });
+
   it('drops a favicon that fails to load rather than showing a broken image', () => {
     // Archived favicon URLs are captured at archive time and can rot.
     const row = createEntryRow({ title: 'T', meta: 'm', faviconUrl: 'https://example.com/i.png' });

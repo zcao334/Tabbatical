@@ -1,8 +1,9 @@
 import { renderDigest } from './digest';
-import { renderArchive } from './archive';
+import { initArchiveSearch, renderArchive } from './archive';
 
 const digestList = document.getElementById('digest-list');
 const archiveList = document.getElementById('archive-list');
+const archiveSearch = document.getElementById('archive-search');
 const digestTab = document.getElementById('tab-digest');
 const archiveTab = document.getElementById('tab-archive');
 const digestView = document.getElementById('view-digest');
@@ -31,6 +32,10 @@ function showView(view: ViewName): void {
 
 digestTab?.addEventListener('click', () => showView('digest'));
 archiveTab?.addEventListener('click', () => showView('archive'));
+
+if (archiveList && archiveSearch instanceof HTMLInputElement) {
+  initArchiveSearch(archiveSearch, archiveList);
+}
 
 if (digestList) {
   void renderDigest(digestList);

@@ -47,6 +47,24 @@ h1 {
   border-bottom-color: #1a73e8;
 }
 
+/* Search */
+
+.search-input {
+  font: inherit;
+  font-size: 13px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  margin-bottom: 12px;
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #1a73e8;
+}
+
 /* Rows */
 
 .entry-list {
@@ -111,6 +129,24 @@ h1 {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.row-snippet {
+  font-size: 11px;
+  line-height: 1.45;
+  color: #3c4043;
+  margin-top: 4px;
+  /* Snippets are one line of context, not a preview pane. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.row-snippet mark {
+  background: #fff1a8;
+  color: inherit;
+  border-radius: 2px;
 }
 
 .row-button {

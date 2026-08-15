@@ -1,4 +1,5 @@
 import { getAllArchiveEntries } from '../shared/archive-db';
+import { createArchiveSearcher, type ArchiveSearcher, type SearchHit } from '../shared/archive-search';
 import type { ArchiveEntry } from '../shared/types';
 import { createEntryRow, createRenderGuard, formatDomain, renderEmptyState } from './components';
 
@@ -32,7 +33,8 @@ export function formatArchivedAt(archivedAt: number, now: number = Date.now()): 
   return DATE_FORMAT.format(archivedAt);
 }
 
-function buildRow(entry: ArchiveEntry): HTMLLIElement {
+function buildRow(hit: SearchHit): HTMLLIElement {
+  const { entry } = hit;
   return createEntryRow({
     title: entry.title,
     // Domain first: it's what identifies a page at a glance once the title
@@ -42,7 +44,56 @@ function buildRow(entry: ArchiveEntry): HTMLLIElement {
     // Surfaces what Week 2 could only show in DevTools: whether this entry
     // holds readable text or just the metadata of a page we couldn't read.
     badge: entry.hasFullText ? undefined : 'metadata only',
+    snippet: hit.snippet,
   });
+}
+
+/**
+ * Loaded entries and their index, kept between renders.
+ *
+ * Searching has to be synchronous to filter as the user types, so the archive
+ * is read from IndexedDB once and re-queried in memory. Reloading per keystroke
+ * would also rebuild the Fuse index each time.
+ */
+let searcher: ArchiveSearcher | null = null;
+let entryCount = 0;
+let searchInput: HTMLInputElement | null = null;
+
+/** Wires the search box; the archive re-filters in place as the query changes. */
+export function initArchiveSearch(input: HTMLInputElement, container: HTMLElement): void {
+  searchInput = input;
+  input.addEventListener('input', () => renderHits(container));
+}
+
+function currentQuery(): string {
+  return searchInput?.value ?? '';
+}
+
+function renderHits(container: HTMLElement): void {
+  if (!searcher) return;
+
+  const query = currentQuery();
+  const hits = searcher.search(query);
+
+  if (hits.length === 0) {
+    // Distinguishes "the archive is empty" from "nothing matched", which look
+    // identical otherwise and suggest very different next steps.
+    renderEmptyState(
+      container,
+      entryCount === 0
+        ? 'Nothing archived yet. Archive a tab to see it here.'
+        : `No archived pages match “${query}”.`,
+    );
+    return;
+  }
+
+  container.innerHTML = '';
+  for (const hit of hits) {
+    const row = buildRow(hit);
+    // Exact capture time on hover; the row itself stays compact.
+    row.title = DATE_TIME_FORMAT.format(hit.entry.archivedAt);
+    container.appendChild(row);
+  }
 }
 
 export async function renderArchive(container: HTMLElement): Promise<void> {
@@ -52,23 +103,14 @@ export async function renderArchive(container: HTMLElement): Promise<void> {
   try {
     entries = await getAllArchiveEntries();
   } catch (error) {
-    console.error('[Tab Review] Failed to read the archive', error);
+    console.error('[Tabbatical] Failed to read the archive', error);
     if (isCurrent()) renderEmptyState(container, "Couldn't load the archive.");
     return;
   }
 
   if (!isCurrent()) return;
 
-  if (entries.length === 0) {
-    renderEmptyState(container, 'Nothing archived yet. Archive a tab to see it here.');
-    return;
-  }
-
-  container.innerHTML = '';
-  for (const entry of entries) {
-    const row = buildRow(entry);
-    // Exact capture time on hover; the row itself stays compact.
-    row.title = DATE_TIME_FORMAT.format(entry.archivedAt);
-    container.appendChild(row);
-  }
+  searcher = createArchiveSearcher(entries);
+  entryCount = entries.length;
+  renderHits(container);
 }

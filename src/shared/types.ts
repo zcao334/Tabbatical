@@ -46,6 +46,19 @@ export interface ArchiveEntry {
 }
 
 /**
+ * A run of text with one span called out inside it — a search snippet and the
+ * offsets of the term that matched.
+ *
+ * Offsets rather than pre-built markup so the renderer can highlight using text
+ * nodes; the side panel never assigns innerHTML from stored page content.
+ */
+export interface Snippet {
+  text: string;
+  matchStart: number;
+  matchLength: number;
+}
+
+/**
  * Upper bound on stored article text. A long article runs 10-20KB, so this
  * keeps essentially all real content while bounding pathological pages
  * (huge API references, 400-comment threads, infinite-scroll feeds).
