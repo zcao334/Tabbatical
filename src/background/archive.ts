@@ -69,7 +69,7 @@ export async function archiveTab(tabId: number): Promise<ArchiveTabResponse> {
   try {
     await addArchiveEntry(entry);
   } catch (error) {
-    console.error('[Tab Review] Failed to write archive entry', error);
+    console.error('[Tabbatical] Failed to write archive entry', error);
     return { status: 'failed' };
   }
 
@@ -77,7 +77,7 @@ export async function archiveTab(tabId: number): Promise<ArchiveTabResponse> {
     await chrome.tabs.remove(tabId);
   } catch (error) {
     // The capture is already safe; a tab that closed itself first is fine.
-    console.warn('[Tab Review] Archived, but could not close the tab', error);
+    console.warn('[Tabbatical] Archived, but could not close the tab', error);
   }
 
   // Closing the tab fires onRemoved, which prunes the tracking map and in turn

@@ -99,7 +99,7 @@ try {
 } catch (error) {
   // A parse failure is reported the same as "no article found" — the archive
   // flow falls back to metadata-only either way.
-  console.error('[Tab Review] Content extraction failed', error);
+  console.error('[Tabbatical] Content extraction failed', error);
 }
 
 const message: ExtractionResultMessage = { type: EXTRACTION_RESULT, content };

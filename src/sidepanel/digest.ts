@@ -101,7 +101,7 @@ async function archiveTab(activity: TabActivity, container: HTMLElement): Promis
       tabId: activity.tabId,
     });
   } catch (error) {
-    console.error('[Tab Review] Archive request failed', error);
+    console.error('[Tabbatical] Archive request failed', error);
   }
 
   archivingTabIds.delete(activity.tabId);
