@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
-import { createEntryRow, createRenderGuard, formatDomain, renderEmptyState } from './components';
+import {
+  createEntryRow,
+  createRenderGuard,
+  createRowState,
+  formatDomain,
+  renderEmptyState,
+} from './components';
 
 describe('createEntryRow', () => {
   it('renders title, meta and actions', () => {
@@ -87,6 +93,92 @@ describe('createEntryRow', () => {
 
     img?.dispatchEvent(new Event('error'));
     expect(row.querySelector('.row-favicon')).toBeNull();
+  });
+});
+
+describe('createRowState', () => {
+  const noop = { errorMessage: 'Failed', render: () => {} };
+
+  it('reports a row as pending only while its action runs', async () => {
+    const state = createRowState<number>();
+    let pendingDuring: boolean | undefined;
+
+    expect(state.isPending(1)).toBe(false);
+    await state.run(1, async () => void (pendingDuring = state.isPending(1)), noop);
+
+    expect(pendingDuring).toBe(true);
+    expect(state.isPending(1)).toBe(false);
+  });
+
+  it('re-renders when the action starts and again when it settles', async () => {
+    const state = createRowState<number>();
+    const render = vi.fn();
+
+    await state.run(1, async () => {}, { errorMessage: 'Failed', render });
+    expect(render).toHaveBeenCalledTimes(2);
+  });
+
+  it('records the error message when the action throws', async () => {
+    const state = createRowState<number>();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await state.run(1, async () => {
+      throw new Error('boom');
+    }, noop);
+
+    expect(state.errorFor(1)).toBe('Failed');
+  });
+
+  it('does not leave a row pending after a failure', async () => {
+    // A stranded row would stay disabled with no way back.
+    const state = createRowState<number>();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await state.run(1, async () => {
+      throw new Error('boom');
+    }, noop);
+
+    expect(state.isPending(1)).toBe(false);
+  });
+
+  it('clears a previous error when the row is retried', async () => {
+    const state = createRowState<number>();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await state.run(1, async () => {
+      throw new Error('boom');
+    }, noop);
+    await state.run(1, async () => {}, noop);
+
+    expect(state.errorFor(1)).toBeUndefined();
+  });
+
+  it('ignores a second run while the first is still in flight', async () => {
+    const state = createRowState<number>();
+    const action = vi.fn().mockImplementation(() => new Promise<void>(() => {}));
+
+    void state.run(1, action, noop);
+    // The guard has to hold before any await resolves: two clicks land in the
+    // same task, so a check that only took effect after the first render would
+    // let both through.
+    expect(state.isPending(1)).toBe(true);
+    void state.run(1, action, noop);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps rows independent', async () => {
+    const state = createRowState<number>();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await state.run(1, async () => {
+      throw new Error('boom');
+    }, noop);
+    await state.run(2, async () => {}, noop);
+
+    expect(state.errorFor(1)).toBe('Failed');
+    expect(state.errorFor(2)).toBeUndefined();
   });
 });
 

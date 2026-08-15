@@ -140,6 +140,66 @@ export function renderEmptyState(container: HTMLElement, message: string): void 
   container.appendChild(empty);
 }
 
+export interface RowActionOptions {
+  /** Shown on the row when the action fails. */
+  errorMessage: string;
+  /** Rebuilds the list so the row reflects the state change. */
+  render: () => void | Promise<void>;
+}
+
+/**
+ * Tracks which rows have an action in flight, and which one last failed.
+ *
+ * This state can't live in the DOM, because a row action triggers exactly the
+ * re-render that would discard it: archiving writes to storage, the storage
+ * listener rebuilds the list, and a button that set its own `disabled` would
+ * come back enabled halfway through the operation it was guarding.
+ *
+ * Keyed generically because the digest identifies rows by tab id and the
+ * archive by entry id.
+ */
+export interface RowState<K> {
+  isPending(key: K): boolean;
+  errorFor(key: K): string | undefined;
+  /**
+   * Marks the row pending, runs the action, then settles — re-rendering at both
+   * ends. Re-entry for a key already in flight is ignored, so a double click
+   * can't start the same operation twice.
+   */
+  run(key: K, action: () => Promise<void>, options: RowActionOptions): Promise<void>;
+}
+
+export function createRowState<K>(): RowState<K> {
+  const pending = new Set<K>();
+  const errors = new Map<K, string>();
+
+  return {
+    isPending: (key) => pending.has(key),
+    errorFor: (key) => errors.get(key),
+
+    async run(key, action, { errorMessage, render }) {
+      if (pending.has(key)) return;
+
+      pending.add(key);
+      // A retry starts clean rather than showing the previous failure beside a
+      // spinner.
+      errors.delete(key);
+      await render();
+
+      try {
+        await action();
+      } catch (error) {
+        console.error('[Tabbatical] Row action failed', error);
+        errors.set(key, errorMessage);
+      } finally {
+        // Settled in `finally` so a throw can't strand a row disabled forever.
+        pending.delete(key);
+        await render();
+      }
+    },
+  };
+}
+
 /**
  * Guards against out-of-order async renders.
  *

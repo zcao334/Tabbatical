@@ -7,7 +7,7 @@ import {
   type ArchiveTabRequest,
   type ArchiveTabResponse,
 } from '../shared/messages';
-import { createEntryRow, createRenderGuard, renderEmptyState } from './components';
+import { createEntryRow, createRenderGuard, createRowState, renderEmptyState } from './components';
 
 interface DigestEntry {
   activity: TabActivity;
@@ -52,12 +52,12 @@ interface EntryActions {
 
 function renderEntry(entry: DigestEntry, actions: EntryActions): HTMLLIElement {
   const { activity } = entry;
-  const archiving = archivingTabIds.has(activity.tabId);
+  const archiving = rowState.isPending(activity.tabId);
 
   return createEntryRow({
     title: activity.title || activity.url,
     meta: `${formatDaysIdle(activity.lastActiveAt)} · revisited ${activity.revisitCount}x · score ${entry.staleness.toFixed(0)}`,
-    error: failedTabIds.has(activity.tabId) ? "Couldn't archive" : undefined,
+    error: rowState.errorFor(activity.tabId),
     actions: [
       { label: 'Keep', onClick: () => actions.onKeep(activity.tabId) },
       {
@@ -69,17 +69,11 @@ function renderEntry(entry: DigestEntry, actions: EntryActions): HTMLLIElement {
   });
 }
 
-/**
- * In-flight and failed state lives outside the DOM because renderDigest()
- * rebuilds the whole list — and archiving triggers storage writes that cause
- * exactly such a re-render, which would otherwise wipe a button's disabled
- * state mid-operation.
- */
-const archivingTabIds = new Set<number>();
-const failedTabIds = new Set<number>();
+/** Tracks which tabs are mid-archive and which last failed. */
+const rowState = createRowState<number>();
 
 async function archiveTab(activity: TabActivity, container: HTMLElement): Promise<void> {
-  if (archivingTabIds.has(activity.tabId)) return;
+  if (rowState.isPending(activity.tabId)) return;
 
   // Requested first thing in the click handler, with no await ahead of it, so
   // the user gesture is still valid. Already-granted origins resolve without
@@ -90,28 +84,23 @@ async function archiveTab(activity: TabActivity, container: HTMLElement): Promis
     if (!granted) return;
   }
 
-  archivingTabIds.add(activity.tabId);
-  failedTabIds.delete(activity.tabId);
-  await renderDigest(container);
-
-  let response: ArchiveTabResponse | undefined;
-  try {
-    response = await chrome.runtime.sendMessage<ArchiveTabRequest, ArchiveTabResponse>({
-      type: ARCHIVE_TAB_REQUEST,
-      tabId: activity.tabId,
-    });
-  } catch (error) {
-    console.error('[Tabbatical] Archive request failed', error);
-  }
-
-  archivingTabIds.delete(activity.tabId);
-  if (response?.status === 'failed' || !response) {
-    failedTabIds.add(activity.tabId);
-  }
-
-  // On success the tab closes, which prunes the tracking map and re-renders
-  // via the storage listener; this covers the cancelled and failed paths.
-  await renderDigest(container);
+  // On success the tab closes, which prunes the tracking map and re-renders via
+  // the storage listener; the render here covers the failed path.
+  await rowState.run(
+    activity.tabId,
+    async () => {
+      const response = await chrome.runtime.sendMessage<ArchiveTabRequest, ArchiveTabResponse>({
+        type: ARCHIVE_TAB_REQUEST,
+        tabId: activity.tabId,
+      });
+      // A missing response means the worker went away mid-request, which is a
+      // failure like any other rather than a silent success.
+      if (!response || response.status === 'failed') {
+        throw new Error(`Archive request returned ${response?.status ?? 'no response'}`);
+      }
+    },
+    { errorMessage: "Couldn't archive", render: () => renderDigest(container) },
+  );
 }
 
 // A manual re-render after "Keep" races the chrome.storage.onChanged listener
