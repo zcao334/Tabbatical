@@ -1,7 +1,13 @@
-import { getAllArchiveEntries } from '../shared/archive-db';
+import { deleteArchiveEntry, getAllArchiveEntries } from '../shared/archive-db';
 import { createArchiveSearcher, type ArchiveSearcher, type SearchHit } from '../shared/archive-search';
 import type { ArchiveEntry } from '../shared/types';
-import { createEntryRow, createRenderGuard, formatDomain, renderEmptyState } from './components';
+import {
+  createEntryRow,
+  createRenderGuard,
+  createRowState,
+  formatDomain,
+  renderEmptyState,
+} from './components';
 
 const renderGuard = createRenderGuard();
 
@@ -33,8 +39,79 @@ export function formatArchivedAt(archivedAt: number, now: number = Date.now()): 
   return DATE_FORMAT.format(archivedAt);
 }
 
-function buildRow(hit: SearchHit): HTMLLIElement {
+/**
+ * Loaded entries and their index, kept between renders.
+ *
+ * Searching has to be synchronous to filter as the user types, so the archive
+ * is read from IndexedDB once and re-queried in memory. Reloading per keystroke
+ * would also rebuild the Fuse index each time.
+ */
+let entries: ArchiveEntry[] = [];
+let searcher: ArchiveSearcher | null = null;
+let searchInput: HTMLInputElement | null = null;
+
+/** Tracks which rows have a restore or delete in flight, and which last failed. */
+const rowState = createRowState<string>();
+
+/**
+ * The entry whose Delete button is armed, if any.
+ *
+ * Deleting discards captured text that can't be recovered by re-archiving —
+ * the page may be gone, paywalled, or simply different — so a single stray
+ * click shouldn't do it. Arming one row at a time keeps this to a single id
+ * and needs no timers: clicking Delete elsewhere just moves the confirmation.
+ */
+let armedDeleteId: string | null = null;
+
+/** Wires the search box; the archive re-filters in place as the query changes. */
+export function initArchiveSearch(input: HTMLInputElement, container: HTMLElement): void {
+  searchInput = input;
+  input.addEventListener('input', () => {
+    // Rows move as the query narrows, so an armed Delete shouldn't outlive the
+    // list it was aimed at.
+    armedDeleteId = null;
+    renderHits(container);
+  });
+}
+
+/** Reopens an archived page. The entry stays put — Delete is the way to remove it. */
+async function restoreEntry(entry: ArchiveEntry, container: HTMLElement): Promise<void> {
+  armedDeleteId = null;
+  await rowState.run(
+    entry.id,
+    async () => {
+      await chrome.tabs.create({ url: entry.url });
+    },
+    { errorMessage: "Couldn't reopen this page", render: () => renderHits(container) },
+  );
+}
+
+async function deleteEntry(entry: ArchiveEntry, container: HTMLElement): Promise<void> {
+  if (armedDeleteId !== entry.id) {
+    armedDeleteId = entry.id;
+    renderHits(container);
+    return;
+  }
+
+  armedDeleteId = null;
+  await rowState.run(
+    entry.id,
+    async () => {
+      await deleteArchiveEntry(entry.id);
+      // Dropped from the cache rather than reloaded: re-reading the archive
+      // would pull every entry's full text back out of IndexedDB to learn one
+      // row is gone.
+      setEntries(entries.filter((candidate) => candidate.id !== entry.id));
+    },
+    { errorMessage: "Couldn't delete this entry", render: () => renderHits(container) },
+  );
+}
+
+function buildRow(hit: SearchHit, container: HTMLElement): HTMLLIElement {
   const { entry } = hit;
+  const busy = rowState.isPending(entry.id);
+  const armed = armedDeleteId === entry.id;
+
   return createEntryRow({
     title: entry.title,
     // Domain first: it's what identifies a page at a glance once the title
@@ -45,24 +122,21 @@ function buildRow(hit: SearchHit): HTMLLIElement {
     // holds readable text or just the metadata of a page we couldn't read.
     badge: entry.hasFullText ? undefined : 'metadata only',
     snippet: hit.snippet,
+    error: rowState.errorFor(entry.id),
+    actions: [
+      {
+        label: 'Restore',
+        disabled: busy,
+        onClick: () => void restoreEntry(entry, container),
+      },
+      {
+        label: armed ? 'Delete?' : 'Delete',
+        className: armed ? 'row-button row-button--danger' : undefined,
+        disabled: busy,
+        onClick: () => void deleteEntry(entry, container),
+      },
+    ],
   });
-}
-
-/**
- * Loaded entries and their index, kept between renders.
- *
- * Searching has to be synchronous to filter as the user types, so the archive
- * is read from IndexedDB once and re-queried in memory. Reloading per keystroke
- * would also rebuild the Fuse index each time.
- */
-let searcher: ArchiveSearcher | null = null;
-let entryCount = 0;
-let searchInput: HTMLInputElement | null = null;
-
-/** Wires the search box; the archive re-filters in place as the query changes. */
-export function initArchiveSearch(input: HTMLInputElement, container: HTMLElement): void {
-  searchInput = input;
-  input.addEventListener('input', () => renderHits(container));
 }
 
 function currentQuery(): string {
@@ -80,7 +154,7 @@ function renderHits(container: HTMLElement): void {
     // identical otherwise and suggest very different next steps.
     renderEmptyState(
       container,
-      entryCount === 0
+      entries.length === 0
         ? 'Nothing archived yet. Archive a tab to see it here.'
         : `No archived pages match “${query}”.`,
     );
@@ -89,19 +163,25 @@ function renderHits(container: HTMLElement): void {
 
   container.innerHTML = '';
   for (const hit of hits) {
-    const row = buildRow(hit);
+    const row = buildRow(hit, container);
     // Exact capture time on hover; the row itself stays compact.
     row.title = DATE_TIME_FORMAT.format(hit.entry.archivedAt);
     container.appendChild(row);
   }
 }
 
+/** Swaps in a new entry list and reindexes it for search. */
+function setEntries(next: ArchiveEntry[]): void {
+  entries = next;
+  searcher = createArchiveSearcher(next);
+}
+
 export async function renderArchive(container: HTMLElement): Promise<void> {
   const isCurrent = renderGuard.begin();
 
-  let entries: ArchiveEntry[];
+  let loaded: ArchiveEntry[];
   try {
-    entries = await getAllArchiveEntries();
+    loaded = await getAllArchiveEntries();
   } catch (error) {
     console.error('[Tabbatical] Failed to read the archive', error);
     if (isCurrent()) renderEmptyState(container, "Couldn't load the archive.");
@@ -110,7 +190,6 @@ export async function renderArchive(container: HTMLElement): Promise<void> {
 
   if (!isCurrent()) return;
 
-  searcher = createArchiveSearcher(entries);
-  entryCount = entries.length;
+  setEntries(loaded);
   renderHits(container);
 }

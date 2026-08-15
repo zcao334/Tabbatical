@@ -168,6 +168,17 @@ h1 {
   cursor: default;
 }
 
+/* The armed state of a two-step delete — it should not look like a peer of Restore. */
+.row-button--danger {
+  border-color: #f5c0be;
+  background: #fce8e6;
+  color: #c5221f;
+}
+
+.row-button--danger:hover:not(:disabled) {
+  background: #fad2cf;
+}
+
 .row-error {
   flex-basis: 100%;
   font-size: 11px;
