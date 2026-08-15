@@ -32,8 +32,19 @@ export const LINK_DENSITY_LIMIT = 0.5;
  */
 export const MIN_ARTICLE_TEXT_LENGTH = 200;
 
+/**
+ * Collapse runs of whitespace to single spaces and trim.
+ *
+ * Shared with the extractor: measuring text and storing text have to agree on
+ * what counts as text, or a page could pass the length gate on whitespace the
+ * stored copy then discards.
+ */
+export function normalizeWhitespace(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
 function textLengthOf(node: { textContent: string | null }): number {
-  return (node.textContent ?? '').replace(/\s+/g, ' ').trim().length;
+  return normalizeWhitespace(node.textContent ?? '').length;
 }
 
 /**

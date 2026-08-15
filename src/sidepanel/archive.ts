@@ -1,6 +1,6 @@
 import { deleteArchiveEntry, getAllArchiveEntries } from '../shared/archive-db';
 import { createArchiveSearcher, type ArchiveSearcher, type SearchHit } from '../shared/archive-search';
-import type { ArchiveEntry } from '../shared/types';
+import { MS_PER_DAY, type ArchiveEntry } from '../shared/types';
 import {
   createEntryRow,
   createRenderGuard,
@@ -19,8 +19,6 @@ const DATE_TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
   timeStyle: 'short',
 });
-
-const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
 /**
  * Recent captures get a relative label because "2h ago" is what the user is

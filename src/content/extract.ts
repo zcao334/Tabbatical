@@ -1,5 +1,5 @@
 import { Readability, isProbablyReaderable } from '@mozilla/readability';
-import { isArticleLike } from '../shared/article-quality';
+import { isArticleLike, normalizeWhitespace } from '../shared/article-quality';
 import { MAX_EXTRACTED_TEXT_LENGTH } from '../shared/types';
 import {
   EXTRACTION_RESULT,
@@ -15,11 +15,6 @@ import {
  * chrome.runtime.sendMessage; the background correlates the reply by sender
  * tab id.
  */
-
-/** Collapse Readability's generous whitespace so stored text stays compact. */
-function normalizeWhitespace(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
-}
 
 /** Readability yields '' for absent fields; store nothing rather than empty strings. */
 function orUndefined(value: string | null | undefined): string | undefined {

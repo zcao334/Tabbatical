@@ -1,6 +1,6 @@
 import { computeStaleness } from '../shared/staleness';
 import { getTabActivityMap, patchTabActivity } from '../shared/storage';
-import type { TabActivity } from '../shared/types';
+import { MS_PER_DAY, type TabActivity } from '../shared/types';
 import { isInjectableUrl, requestHostPermission } from '../shared/permissions';
 import {
   ARCHIVE_TAB_REQUEST,
@@ -40,7 +40,7 @@ async function buildDigest(): Promise<DigestEntry[]> {
 }
 
 function formatDaysIdle(lastActiveAt: number): string {
-  const days = (Date.now() - lastActiveAt) / (1000 * 60 * 60 * 24);
+  const days = (Date.now() - lastActiveAt) / MS_PER_DAY;
   if (days < 1) return 'active today';
   return `${Math.floor(days)}d idle`;
 }
