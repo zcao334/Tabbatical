@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Tab Review",
+  "name": "Tabbatical",
   "version": "0.1.0",
   "description": "Proactively review your open tabs and decide what to keep.",
   "permissions": [
@@ -21,7 +21,7 @@
     "default_path": "src/sidepanel/index.html"
   },
   "action": {
-    "default_title": "Open Tab Review"
+    "default_title": "Open Tabbatical"
   },
   "icons": {
     "16": "src/icons/icon16.png",

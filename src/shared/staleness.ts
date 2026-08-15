@@ -1,6 +1,9 @@
-import { DEFAULT_STALENESS_CONFIG, type StalenessConfig, type TabActivity } from './types';
-
-const MS_PER_DAY = 1000 * 60 * 60 * 24;
+import {
+  DEFAULT_STALENESS_CONFIG,
+  MS_PER_DAY,
+  type StalenessConfig,
+  type TabActivity,
+} from './types';
 
 export interface StalenessInput extends Pick<TabActivity, 'lastActiveAt' | 'revisitCount' | 'pinned'> {
   isInActiveGroup: boolean;

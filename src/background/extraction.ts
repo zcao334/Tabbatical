@@ -88,7 +88,7 @@ export async function extractTabContent(tabId: number): Promise<ExtractionOutcom
     await chrome.scripting.executeScript({ target: { tabId }, files: [EXTRACTOR_PATH] });
   } catch (error) {
     pending.cancel();
-    console.error('[Tab Review] Failed to inject the extractor', error);
+    console.error('[Tabbatical] Failed to inject the extractor', error);
     return { status: 'failed' };
   }
 

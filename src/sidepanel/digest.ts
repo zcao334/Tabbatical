@@ -1,12 +1,13 @@
 import { computeStaleness } from '../shared/staleness';
 import { getTabActivityMap, patchTabActivity } from '../shared/storage';
-import type { TabActivity } from '../shared/types';
+import { MS_PER_DAY, type TabActivity } from '../shared/types';
 import { isInjectableUrl, requestHostPermission } from '../shared/permissions';
 import {
   ARCHIVE_TAB_REQUEST,
   type ArchiveTabRequest,
   type ArchiveTabResponse,
 } from '../shared/messages';
+import { createEntryRow, createRenderGuard, createRowState, renderEmptyState } from './components';
 
 interface DigestEntry {
   activity: TabActivity;
@@ -39,7 +40,7 @@ async function buildDigest(): Promise<DigestEntry[]> {
 }
 
 function formatDaysIdle(lastActiveAt: number): string {
-  const days = (Date.now() - lastActiveAt) / (1000 * 60 * 60 * 24);
+  const days = (Date.now() - lastActiveAt) / MS_PER_DAY;
   if (days < 1) return 'active today';
   return `${Math.floor(days)}d idle`;
 }
@@ -50,59 +51,33 @@ interface EntryActions {
 }
 
 function renderEntry(entry: DigestEntry, actions: EntryActions): HTMLLIElement {
-  const li = document.createElement('li');
-  li.className = 'tab-item';
+  const { activity } = entry;
+  const archiving = rowState.isPending(activity.tabId);
 
-  const info = document.createElement('div');
-  info.className = 'tab-info';
-
-  const title = document.createElement('div');
-  title.className = 'tab-title';
-  title.textContent = entry.activity.title || entry.activity.url;
-  info.appendChild(title);
-
-  const meta = document.createElement('div');
-  meta.className = 'tab-meta';
-  meta.textContent = `${formatDaysIdle(entry.activity.lastActiveAt)} · revisited ${entry.activity.revisitCount}x · score ${entry.staleness.toFixed(0)}`;
-  info.appendChild(meta);
-
-  li.appendChild(info);
-
-  const keepButton = document.createElement('button');
-  keepButton.className = 'keep-button';
-  keepButton.textContent = 'Keep';
-  keepButton.addEventListener('click', () => actions.onKeep(entry.activity.tabId));
-  li.appendChild(keepButton);
-
-  const archiveButton = document.createElement('button');
-  archiveButton.className = 'archive-button';
-  const archiving = archivingTabIds.has(entry.activity.tabId);
-  archiveButton.textContent = archiving ? 'Archiving…' : 'Archive';
-  archiveButton.disabled = archiving;
-  archiveButton.addEventListener('click', () => actions.onArchive(entry.activity));
-  li.appendChild(archiveButton);
-
-  if (failedTabIds.has(entry.activity.tabId)) {
-    const error = document.createElement('div');
-    error.className = 'tab-error';
-    error.textContent = "Couldn't archive";
-    li.appendChild(error);
-  }
-
-  return li;
+  return createEntryRow({
+    title: activity.title || activity.url,
+    meta: [
+      formatDaysIdle(activity.lastActiveAt),
+      `revisited ${activity.revisitCount}x`,
+      `score ${entry.staleness.toFixed(0)}`,
+    ],
+    error: rowState.errorFor(activity.tabId),
+    actions: [
+      { label: 'Keep', onClick: () => actions.onKeep(activity.tabId) },
+      {
+        label: archiving ? 'Archiving…' : 'Archive',
+        disabled: archiving,
+        onClick: () => actions.onArchive(activity),
+      },
+    ],
+  });
 }
 
-/**
- * In-flight and failed state lives outside the DOM because renderDigest()
- * rebuilds the whole list — and archiving triggers storage writes that cause
- * exactly such a re-render, which would otherwise wipe a button's disabled
- * state mid-operation.
- */
-const archivingTabIds = new Set<number>();
-const failedTabIds = new Set<number>();
+/** Tracks which tabs are mid-archive and which last failed. */
+const rowState = createRowState<number>();
 
 async function archiveTab(activity: TabActivity, container: HTMLElement): Promise<void> {
-  if (archivingTabIds.has(activity.tabId)) return;
+  if (rowState.isPending(activity.tabId)) return;
 
   // Requested first thing in the click handler, with no await ahead of it, so
   // the user gesture is still valid. Already-granted origins resolve without
@@ -113,51 +88,40 @@ async function archiveTab(activity: TabActivity, container: HTMLElement): Promis
     if (!granted) return;
   }
 
-  archivingTabIds.add(activity.tabId);
-  failedTabIds.delete(activity.tabId);
-  await renderDigest(container);
-
-  let response: ArchiveTabResponse | undefined;
-  try {
-    response = await chrome.runtime.sendMessage<ArchiveTabRequest, ArchiveTabResponse>({
-      type: ARCHIVE_TAB_REQUEST,
-      tabId: activity.tabId,
-    });
-  } catch (error) {
-    console.error('[Tab Review] Archive request failed', error);
-  }
-
-  archivingTabIds.delete(activity.tabId);
-  if (response?.status === 'failed' || !response) {
-    failedTabIds.add(activity.tabId);
-  }
-
-  // On success the tab closes, which prunes the tracking map and re-renders
-  // via the storage listener; this covers the cancelled and failed paths.
-  await renderDigest(container);
+  // On success the tab closes, which prunes the tracking map and re-renders via
+  // the storage listener; the render here covers the failed path.
+  await rowState.run(
+    activity.tabId,
+    async () => {
+      const response = await chrome.runtime.sendMessage<ArchiveTabRequest, ArchiveTabResponse>({
+        type: ARCHIVE_TAB_REQUEST,
+        tabId: activity.tabId,
+      });
+      // A missing response means the worker went away mid-request, which is a
+      // failure like any other rather than a silent success.
+      if (!response || response.status === 'failed') {
+        throw new Error(`Archive request returned ${response?.status ?? 'no response'}`);
+      }
+    },
+    { errorMessage: "Couldn't archive", render: () => renderDigest(container) },
+  );
 }
 
-// Renders can overlap (a manual re-render after "Keep" races with the
-// chrome.storage.onChanged listener firing for the same write). Since
-// buildDigest() is async, an older render can otherwise resolve after a
-// newer one and overwrite the DOM with stale data. Track the latest
-// requested render and drop the result of any call that's been superseded.
-let latestRenderId = 0;
+// A manual re-render after "Keep" races the chrome.storage.onChanged listener
+// firing for the same write, so renders overlap routinely.
+const renderGuard = createRenderGuard();
 
 export async function renderDigest(container: HTMLElement): Promise<void> {
-  const renderId = ++latestRenderId;
+  const isCurrent = renderGuard.begin();
   const entries = await buildDigest();
-  if (renderId !== latestRenderId) return;
-
-  container.innerHTML = '';
+  if (!isCurrent()) return;
 
   if (entries.length === 0) {
-    const empty = document.createElement('li');
-    empty.className = 'empty-state';
-    empty.textContent = 'No tracked tabs yet.';
-    container.appendChild(empty);
+    renderEmptyState(container, 'No tracked tabs yet.');
     return;
   }
+
+  container.innerHTML = '';
 
   for (const entry of entries) {
     container.appendChild(

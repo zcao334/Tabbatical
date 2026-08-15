@@ -1,4 +1,4 @@
-# Tab Review
+# Tabbatical
 
 A Chrome extension that proactively reviews your open tabs and helps you decide what to keep, archive, or snooze — instead of letting clutter accumulate silently.
 
