@@ -56,7 +56,11 @@ function renderEntry(entry: DigestEntry, actions: EntryActions): HTMLLIElement {
 
   return createEntryRow({
     title: activity.title || activity.url,
-    meta: `${formatDaysIdle(activity.lastActiveAt)} · revisited ${activity.revisitCount}x · score ${entry.staleness.toFixed(0)}`,
+    meta: [
+      formatDaysIdle(activity.lastActiveAt),
+      `revisited ${activity.revisitCount}x`,
+      `score ${entry.staleness.toFixed(0)}`,
+    ],
     error: rowState.errorFor(activity.tabId),
     actions: [
       { label: 'Keep', onClick: () => actions.onKeep(activity.tabId) },

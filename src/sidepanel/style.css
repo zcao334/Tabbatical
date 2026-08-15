@@ -98,13 +98,6 @@ h1 {
   min-width: 0;
 }
 
-.row-title-line {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-}
-
 .row-title {
   font-size: 13px;
   font-weight: 500;
@@ -116,6 +109,7 @@ h1 {
 .row-badge {
   flex: none;
   font-size: 10px;
+  margin-left: 6px;
   padding: 1px 5px;
   border-radius: 3px;
   background: #f1f3f4;
@@ -124,11 +118,25 @@ h1 {
 }
 
 .row-meta {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
   font-size: 11px;
   color: #5f6368;
-  white-space: nowrap;
+}
+
+/* Only the leading segment gives way, so the timestamp after it always shows. */
+.row-meta-lead {
+  min-width: 0;
   overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.row-meta-fixed,
+.row-meta-separator {
+  flex: none;
+  white-space: pre;
 }
 
 .row-snippet {
@@ -152,7 +160,10 @@ h1 {
 .row-button {
   font: inherit;
   font-size: 12px;
-  padding: 4px 10px;
+  flex: none;
+  /* Narrow padding: two buttons at the default panel width leave the title
+     barely a third of the row. */
+  padding: 4px 8px;
   border: 1px solid #dadce0;
   border-radius: 4px;
   background: #f8f9fa;

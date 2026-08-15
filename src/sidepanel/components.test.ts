@@ -1,12 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
-import {
-  createEntryRow,
-  createRenderGuard,
-  createRowState,
-  formatDomain,
-  renderEmptyState,
-} from './components';
+import { createEntryRow, createRenderGuard, createRowState, renderEmptyState } from './components';
 
 describe('createEntryRow', () => {
   it('renders title, meta and actions', () => {
@@ -30,6 +24,34 @@ describe('createEntryRow', () => {
 
     expect(row.querySelector('img')).toBeNull();
     expect(row.querySelector('.row-title')?.textContent).toBe('<img src=x onerror=alert(1)>');
+  });
+
+  it('joins meta segments with a separator that survives copying', () => {
+    const row = createEntryRow({ title: 'T', meta: ['example.com', '2h ago'] });
+
+    expect(row.querySelector('.row-meta')?.textContent).toBe('example.com · 2h ago');
+  });
+
+  it('lets only the leading meta segment shrink', () => {
+    // A single truncating string drops the timestamp, which is the part worth
+    // reading; the domain is what should give way instead.
+    const row = createEntryRow({ title: 'T', meta: ['averylongdomainname.example.com', '2h ago'] });
+
+    expect(row.querySelector('.row-meta-lead')?.textContent).toBe('averylongdomainname.example.com');
+    expect(row.querySelector('.row-meta-fixed')?.textContent).toBe('2h ago');
+  });
+
+  it('drops empty meta segments rather than rendering a stray separator', () => {
+    const row = createEntryRow({ title: 'T', meta: ['example.com', ''] });
+
+    expect(row.querySelector('.row-meta')?.textContent).toBe('example.com');
+  });
+
+  it('keeps the badge off the title line, so the title gets the full width', () => {
+    const row = createEntryRow({ title: 'T', meta: ['example.com', '2h ago'], badge: 'metadata only' });
+
+    expect(row.querySelector('.row-title')?.querySelector('.row-badge')).toBeNull();
+    expect(row.querySelector('.row-meta')?.querySelector('.row-badge')).not.toBeNull();
   });
 
   it('omits the badge, error and favicon unless given', () => {
@@ -216,40 +238,5 @@ describe('renderEmptyState', () => {
 
     expect(list.children).toHaveLength(1);
     expect(list.textContent).toBe('Nothing here.');
-  });
-});
-
-describe('formatDomain', () => {
-  it('strips the www prefix', () => {
-    expect(formatDomain('https://www.foxnews.com/politics/story')).toBe('foxnews.com');
-  });
-
-  it('keeps other subdomains', () => {
-    expect(formatDomain('https://fategrandorder.fandom.com/wiki/X')).toBe(
-      'fategrandorder.fandom.com',
-    );
-  });
-
-  it('keeps the scheme on browser pages, whose hostname alone is meaningless', () => {
-    expect(formatDomain('chrome://extensions/')).toBe('chrome://extensions');
-    expect(formatDomain('chrome://newtab/')).toBe('chrome://newtab');
-    expect(formatDomain('chrome://discards/')).toBe('chrome://discards');
-  });
-
-  it('handles schemes with an authority', () => {
-    expect(formatDomain('file:///Users/me/notes.pdf')).toBe('file:///Users/me/notes.pdf');
-    expect(formatDomain('edge://settings/privacy')).toBe('edge://settings/privacy');
-  });
-
-  it('omits the slashes for schemes that carry an opaque path', () => {
-    // about://blank isn't a URL; these schemes have no authority component.
-    expect(formatDomain('about:blank')).toBe('about:blank');
-    expect(formatDomain('view-source:https://example.com')).toBe(
-      'view-source:https://example.com',
-    );
-  });
-
-  it('falls back to the raw string for non-URLs', () => {
-    expect(formatDomain('not a url')).toBe('not a url');
   });
 });

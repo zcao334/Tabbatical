@@ -5,7 +5,6 @@ import {
   createEntryRow,
   createRenderGuard,
   createRowState,
-  formatDomain,
   renderEmptyState,
 } from './components';
 
@@ -112,11 +111,12 @@ function buildRow(hit: SearchHit, container: HTMLElement): HTMLLIElement {
   const busy = rowState.isPending(entry.id);
   const armed = armedDeleteId === entry.id;
 
-  return createEntryRow({
+  const row = createEntryRow({
     title: entry.title,
-    // Domain first: it's what identifies a page at a glance once the title
-    // is truncated.
-    meta: `${formatDomain(entry.url)} · ${formatArchivedAt(entry.archivedAt)}`,
+    // Source lives in the hover text instead of the row: the favicon and title
+    // already say which site this is, and at panel width the domain crowded out
+    // the capture time, which appears nowhere else on screen.
+    meta: formatArchivedAt(entry.archivedAt),
     faviconUrl: entry.faviconUrl,
     // Surfaces what Week 2 could only show in DevTools: whether this entry
     // holds readable text or just the metadata of a page we couldn't read.
@@ -137,6 +137,12 @@ function buildRow(hit: SearchHit, container: HTMLElement): HTMLLIElement {
       },
     ],
   });
+
+  // The full URL, not just the domain — a tooltip has room for it, and it's
+  // what distinguishes two captures of the same site. The exact capture time
+  // comes along since the row itself only shows "1d ago".
+  row.title = `${entry.url}\nArchived ${DATE_TIME_FORMAT.format(entry.archivedAt)}`;
+  return row;
 }
 
 function currentQuery(): string {
@@ -163,10 +169,7 @@ function renderHits(container: HTMLElement): void {
 
   container.innerHTML = '';
   for (const hit of hits) {
-    const row = buildRow(hit, container);
-    // Exact capture time on hover; the row itself stays compact.
-    row.title = DATE_TIME_FORMAT.format(hit.entry.archivedAt);
-    container.appendChild(row);
+    container.appendChild(buildRow(hit, container));
   }
 }
 

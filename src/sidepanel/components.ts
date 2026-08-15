@@ -19,8 +19,16 @@ export interface RowAction {
 
 export interface RowOptions {
   title: string;
-  /** Secondary line under the title — staleness for the digest, date for the archive. */
-  meta: string;
+  /**
+   * Secondary line under the title — staleness for the digest, source and date
+   * for the archive.
+   *
+   * Given as segments, only the first of which is allowed to shrink. In a side
+   * panel this line runs out of room constantly, and a single string truncates
+   * from the right, which drops the timestamp — the part that changes and so
+   * the part worth reading. Put the expendable segment first.
+   */
+  meta: string | string[];
   faviconUrl?: string;
   /** Small label beside the title, e.g. marking an entry as metadata-only. */
   badge?: string;
@@ -85,27 +93,41 @@ export function createEntryRow(options: RowOptions): HTMLLIElement {
   const info = document.createElement('div');
   info.className = 'row-info';
 
-  const titleLine = document.createElement('div');
-  titleLine.className = 'row-title-line';
-
-  const title = document.createElement('span');
+  // The title gets the line to itself; sharing it with the badge left titles
+  // like "marvel vs capcom 3..." rendering as "marv...".
+  const title = document.createElement('div');
   title.className = 'row-title';
   title.textContent = options.title;
   title.title = options.title; // full text on hover, since the title truncates
-  titleLine.appendChild(title);
+  info.appendChild(title);
+
+  const meta = document.createElement('div');
+  meta.className = 'row-meta';
+
+  const segments = (Array.isArray(options.meta) ? options.meta : [options.meta]).filter(Boolean);
+  segments.forEach((segment, index) => {
+    if (index > 0) {
+      const separator = document.createElement('span');
+      separator.className = 'row-meta-separator';
+      // Spaces live in the text, not in a CSS gap, so the line still reads as
+      // a sentence when copied or announced by a screen reader.
+      separator.textContent = ' · ';
+      meta.appendChild(separator);
+    }
+
+    const span = document.createElement('span');
+    span.className = index === 0 ? 'row-meta-lead' : 'row-meta-fixed';
+    span.textContent = segment;
+    meta.appendChild(span);
+  });
 
   if (options.badge) {
     const badge = document.createElement('span');
     badge.className = 'row-badge';
     badge.textContent = options.badge;
-    titleLine.appendChild(badge);
+    meta.appendChild(badge);
   }
 
-  info.appendChild(titleLine);
-
-  const meta = document.createElement('div');
-  meta.className = 'row-meta';
-  meta.textContent = options.meta;
   info.appendChild(meta);
 
   if (options.snippet) info.appendChild(createSnippet(options.snippet));
@@ -217,34 +239,4 @@ export function createRenderGuard(): { begin: () => () => boolean } {
       return () => id === latest;
     },
   };
-}
-
-/**
- * Short, readable source label for a URL.
- *
- * Web pages show the bare hostname, since that's what identifies a site at a
- * glance. Browser pages keep their scheme: the hostname of
- * `chrome://extensions/` is just "extensions", which reads as a word rather
- * than a page and gives no clue it's a browser screen.
- */
-export function formatDomain(url: string): string {
-  try {
-    const parsed = new URL(url);
-
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-      return parsed.hostname.replace(/^www\./, '');
-    }
-
-    // Not every scheme has an authority: chrome:// and file:// do, while
-    // about: and view-source: hold an opaque path, where inserting "//"
-    // would produce something that isn't a URL at all (about://blank).
-    const separator = parsed.href.startsWith(`${parsed.protocol}//`) ? '//' : '';
-
-    // Trailing slash dropped so chrome://newtab/ reads as chrome://newtab.
-    const path = parsed.pathname.replace(/\/$/, '');
-    return `${parsed.protocol}${separator}${parsed.hostname}${path}`;
-  } catch {
-    // Anything malformed still deserves a label rather than an empty cell.
-    return url;
-  }
 }
