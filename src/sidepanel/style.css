@@ -7,7 +7,7 @@ body {
 
 h1 {
   font-size: 16px;
-  margin: 0 0 4px;
+  margin: 0 0 8px;
 }
 
 .subtitle {
@@ -16,7 +16,40 @@ h1 {
   margin: 0 0 16px;
 }
 
-#digest-list {
+/* Tabs */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #dadce0;
+  margin-bottom: 12px;
+}
+
+.tab {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border: none;
+  background: none;
+  color: #5f6368;
+  cursor: pointer;
+  /* Reserve the active underline so switching tabs doesn't shift the layout. */
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tab:hover {
+  color: #202124;
+}
+
+.tab.is-active {
+  color: #1a73e8;
+  border-bottom-color: #1a73e8;
+}
+
+/* Rows */
+
+.entry-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -25,7 +58,7 @@ h1 {
   gap: 8px;
 }
 
-.tab-item {
+.entry-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -35,12 +68,26 @@ h1 {
   border-radius: 6px;
 }
 
-.tab-info {
+.row-favicon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 3px;
+}
+
+.row-info {
   flex: 1;
   min-width: 0;
 }
 
-.tab-title {
+.row-title-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.row-title {
   font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
@@ -48,7 +95,17 @@ h1 {
   text-overflow: ellipsis;
 }
 
-.tab-meta {
+.row-badge {
+  flex: none;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #f1f3f4;
+  color: #5f6368;
+  white-space: nowrap;
+}
+
+.row-meta {
   font-size: 11px;
   color: #5f6368;
   white-space: nowrap;
@@ -56,8 +113,8 @@ h1 {
   text-overflow: ellipsis;
 }
 
-.keep-button,
-.archive-button {
+.row-button {
+  font: inherit;
   font-size: 12px;
   padding: 4px 10px;
   border: 1px solid #dadce0;
@@ -66,17 +123,16 @@ h1 {
   cursor: pointer;
 }
 
-.keep-button:hover,
-.archive-button:hover:not(:disabled) {
+.row-button:hover:not(:disabled) {
   background: #f1f3f4;
 }
 
-.archive-button:disabled {
+.row-button:disabled {
   color: #80868b;
   cursor: default;
 }
 
-.tab-error {
+.row-error {
   flex-basis: 100%;
   font-size: 11px;
   color: #c5221f;

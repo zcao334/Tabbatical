@@ -7,6 +7,7 @@ import {
   type ArchiveTabRequest,
   type ArchiveTabResponse,
 } from '../shared/messages';
+import { createEntryRow, createRenderGuard, renderEmptyState } from './components';
 
 interface DigestEntry {
   activity: TabActivity;
@@ -50,46 +51,22 @@ interface EntryActions {
 }
 
 function renderEntry(entry: DigestEntry, actions: EntryActions): HTMLLIElement {
-  const li = document.createElement('li');
-  li.className = 'tab-item';
+  const { activity } = entry;
+  const archiving = archivingTabIds.has(activity.tabId);
 
-  const info = document.createElement('div');
-  info.className = 'tab-info';
-
-  const title = document.createElement('div');
-  title.className = 'tab-title';
-  title.textContent = entry.activity.title || entry.activity.url;
-  info.appendChild(title);
-
-  const meta = document.createElement('div');
-  meta.className = 'tab-meta';
-  meta.textContent = `${formatDaysIdle(entry.activity.lastActiveAt)} · revisited ${entry.activity.revisitCount}x · score ${entry.staleness.toFixed(0)}`;
-  info.appendChild(meta);
-
-  li.appendChild(info);
-
-  const keepButton = document.createElement('button');
-  keepButton.className = 'keep-button';
-  keepButton.textContent = 'Keep';
-  keepButton.addEventListener('click', () => actions.onKeep(entry.activity.tabId));
-  li.appendChild(keepButton);
-
-  const archiveButton = document.createElement('button');
-  archiveButton.className = 'archive-button';
-  const archiving = archivingTabIds.has(entry.activity.tabId);
-  archiveButton.textContent = archiving ? 'Archiving…' : 'Archive';
-  archiveButton.disabled = archiving;
-  archiveButton.addEventListener('click', () => actions.onArchive(entry.activity));
-  li.appendChild(archiveButton);
-
-  if (failedTabIds.has(entry.activity.tabId)) {
-    const error = document.createElement('div');
-    error.className = 'tab-error';
-    error.textContent = "Couldn't archive";
-    li.appendChild(error);
-  }
-
-  return li;
+  return createEntryRow({
+    title: activity.title || activity.url,
+    meta: `${formatDaysIdle(activity.lastActiveAt)} · revisited ${activity.revisitCount}x · score ${entry.staleness.toFixed(0)}`,
+    error: failedTabIds.has(activity.tabId) ? "Couldn't archive" : undefined,
+    actions: [
+      { label: 'Keep', onClick: () => actions.onKeep(activity.tabId) },
+      {
+        label: archiving ? 'Archiving…' : 'Archive',
+        disabled: archiving,
+        onClick: () => actions.onArchive(activity),
+      },
+    ],
+  });
 }
 
 /**
@@ -137,27 +114,21 @@ async function archiveTab(activity: TabActivity, container: HTMLElement): Promis
   await renderDigest(container);
 }
 
-// Renders can overlap (a manual re-render after "Keep" races with the
-// chrome.storage.onChanged listener firing for the same write). Since
-// buildDigest() is async, an older render can otherwise resolve after a
-// newer one and overwrite the DOM with stale data. Track the latest
-// requested render and drop the result of any call that's been superseded.
-let latestRenderId = 0;
+// A manual re-render after "Keep" races the chrome.storage.onChanged listener
+// firing for the same write, so renders overlap routinely.
+const renderGuard = createRenderGuard();
 
 export async function renderDigest(container: HTMLElement): Promise<void> {
-  const renderId = ++latestRenderId;
+  const isCurrent = renderGuard.begin();
   const entries = await buildDigest();
-  if (renderId !== latestRenderId) return;
-
-  container.innerHTML = '';
+  if (!isCurrent()) return;
 
   if (entries.length === 0) {
-    const empty = document.createElement('li');
-    empty.className = 'empty-state';
-    empty.textContent = 'No tracked tabs yet.';
-    container.appendChild(empty);
+    renderEmptyState(container, 'No tracked tabs yet.');
     return;
   }
+
+  container.innerHTML = '';
 
   for (const entry of entries) {
     container.appendChild(
