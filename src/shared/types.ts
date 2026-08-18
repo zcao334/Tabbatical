@@ -62,6 +62,27 @@ export interface Snippet {
 }
 
 /**
+ * A tab closed on purpose with a scheduled return.
+ *
+ * Unlike an archive entry this holds no page content — a snoozed tab is coming
+ * back as a live page, so there's nothing to capture. It does keep enough to
+ * reopen and to describe the tab, since the tab itself is gone the moment the
+ * snooze starts and this record is the only thing left of it.
+ *
+ * `id` is generated rather than reusing the tab id: tab ids are recycled by
+ * Chrome, and this record has to outlive the tab, the window, and often the
+ * browser session.
+ */
+export interface SnoozedTab {
+  id: string;
+  url: string;
+  title: string;
+  faviconUrl?: string;
+  snoozedAt: number;
+  wakeAt: number;
+}
+
+/**
  * Upper bound on stored article text. A long article runs 10-20KB, so this
  * keeps essentially all real content while bounding pathological pages
  * (huge API references, 400-comment threads, infinite-scroll feeds).

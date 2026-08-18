@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
-import { createEntryRow, createRenderGuard, createRowState, renderEmptyState } from './components';
+import {
+  createArmedRow,
+  createEntryRow,
+  createRenderGuard,
+  createRowState,
+  renderEmptyState,
+} from './components';
 
 describe('createEntryRow', () => {
   it('renders title, meta and actions', () => {
@@ -107,6 +113,29 @@ describe('createEntryRow', () => {
     expect(row.querySelector('mark')?.textContent).toBe('');
   });
 
+  it('places a control between the text and the buttons', () => {
+    const control = document.createElement('form');
+    control.className = 'row-form';
+    const row = createEntryRow({
+      title: 'T',
+      meta: 'm',
+      control,
+      actions: [{ label: 'Cancel', onClick: () => {} }],
+    });
+
+    const children = Array.from(row.children).map((child) => child.className);
+    expect(children).toEqual(['row-info', 'row-form', 'row-button']);
+  });
+
+  it('renders a control as given, so it can own input state a row cannot', () => {
+    const control = document.createElement('input');
+    control.value = 'typed';
+
+    const row = createEntryRow({ title: 'T', meta: 'm', control });
+
+    expect(row.querySelector('input')?.value).toBe('typed');
+  });
+
   it('drops a favicon that fails to load rather than showing a broken image', () => {
     // Archived favicon URLs are captured at archive time and can rot.
     const row = createEntryRow({ title: 'T', meta: 'm', faviconUrl: 'https://example.com/i.png' });
@@ -190,6 +219,22 @@ describe('createRowState', () => {
     expect(action).toHaveBeenCalledTimes(1);
   });
 
+  it('reports which operation is in flight', async () => {
+    // A row hosting more than one action needs the right verb: "Archiving…" on
+    // a row that is snoozing is worse than no label.
+    const state = createRowState<number, string>();
+    let labelDuring: string | undefined;
+
+    await state.run(1, async () => void (labelDuring = state.pendingFor(1)), {
+      errorMessage: 'Failed',
+      pending: 'Snoozing…',
+      render: () => {},
+    });
+
+    expect(labelDuring).toBe('Snoozing…');
+    expect(state.pendingFor(1)).toBeUndefined();
+  });
+
   it('keeps rows independent', async () => {
     const state = createRowState<number>();
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -238,5 +283,60 @@ describe('renderEmptyState', () => {
 
     expect(list.children).toHaveLength(1);
     expect(list.textContent).toBe('Nothing here.');
+  });
+});
+
+describe('createArmedRow', () => {
+  it('starts with nothing armed', () => {
+    const armed = createArmedRow<string>();
+    expect(armed.isArmed('a')).toBe(false);
+  });
+
+  it('arms one row at a time', () => {
+    // Two rows both waiting on a confirmation is a worse state than losing the
+    // first one.
+    const armed = createArmedRow<string>();
+
+    armed.arm('a');
+    armed.arm('b');
+
+    expect(armed.isArmed('a')).toBe(false);
+    expect(armed.isArmed('b')).toBe(true);
+  });
+
+  it('disarms on clear', () => {
+    const armed = createArmedRow<string>();
+    armed.arm('a');
+
+    armed.clear();
+
+    expect(armed.isArmed('a')).toBe(false);
+  });
+
+  it('carries a detail for the armed row only', () => {
+    const armed = createArmedRow<number, 'presets' | 'custom'>();
+
+    armed.arm(1, 'custom');
+
+    expect(armed.detailFor(1)).toBe('custom');
+    expect(armed.detailFor(2)).toBeUndefined();
+  });
+
+  it('replaces the detail when the same row re-arms', () => {
+    const armed = createArmedRow<number, 'presets' | 'custom'>();
+
+    armed.arm(1, 'presets');
+    armed.arm(1, 'custom');
+
+    expect(armed.detailFor(1)).toBe('custom');
+  });
+
+  it('forgets the detail once cleared', () => {
+    const armed = createArmedRow<number, 'presets' | 'custom'>();
+    armed.arm(1, 'custom');
+
+    armed.clear();
+
+    expect(armed.detailFor(1)).toBeUndefined();
   });
 });

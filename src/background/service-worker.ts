@@ -5,9 +5,10 @@ import {
   replaceTabActivity,
   setTabActivity,
 } from '../shared/storage';
-import { isArchiveTabRequest, isExtractTabRequest } from '../shared/messages';
+import { isArchiveTabRequest, isExtractTabRequest, isSnoozeTabRequest } from '../shared/messages';
 import { extractTabContent } from './extraction';
 import { archiveTab } from './archive';
+import { handleSnoozeAlarm, reconcileSnoozes, snoozeTab } from './snooze';
 
 // A tab must stay active continuously for this long before it's recorded —
 // filters out incidental alt-tab flicker from counting as a real visit.
@@ -88,9 +89,15 @@ chrome.sidePanel
 
 chrome.runtime.onInstalled.addListener(() => {
   void initializeExistingTabs();
+  void reconcileSnoozes();
 });
 chrome.runtime.onStartup.addListener(() => {
   void initializeExistingTabs();
+  void reconcileSnoozes();
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  void handleSnoozeAlarm(alarm);
 });
 
 chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
@@ -145,6 +152,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (isExtractTabRequest(message)) {
     extractTabContent(message.tabId).then(sendResponse);
+    return true;
+  }
+  if (isSnoozeTabRequest(message)) {
+    snoozeTab(message.tabId, message.durationMs).then(sendResponse);
     return true;
   }
   return;

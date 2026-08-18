@@ -78,3 +78,34 @@ export function isArchiveTabRequest(value: unknown): value is ArchiveTabRequest 
     typeof (value as { tabId?: unknown }).tabId === 'number'
   );
 }
+
+export const SNOOZE_TAB_REQUEST = 'tab-review:snooze-tab';
+
+/**
+ * Asks the background to close a tab and schedule its return.
+ *
+ * Handled in the service worker rather than the side panel because the alarm
+ * and the stored record have to be written even if the panel closes the
+ * instant the button is clicked — and because the panel has no way to be
+ * running when the alarm eventually fires.
+ */
+export interface SnoozeTabRequest {
+  type: typeof SNOOZE_TAB_REQUEST;
+  tabId: number;
+  durationMs: number;
+}
+
+export type SnoozeTabResponse =
+  /** Recorded, scheduled and closed. `wakeAt` is the absolute return time. */
+  | { status: 'snoozed'; wakeAt: number }
+  | { status: 'failed' };
+
+export function isSnoozeTabRequest(value: unknown): value is SnoozeTabRequest {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { type?: unknown }).type === SNOOZE_TAB_REQUEST &&
+    typeof (value as { tabId?: unknown }).tabId === 'number' &&
+    typeof (value as { durationMs?: unknown }).durationMs === 'number'
+  );
+}

@@ -2,6 +2,7 @@ import { deleteArchiveEntry, getAllArchiveEntries } from '../shared/archive-db';
 import { createArchiveSearcher, type ArchiveSearcher, type SearchHit } from '../shared/archive-search';
 import { MS_PER_DAY, type ArchiveEntry } from '../shared/types';
 import {
+  createArmedRow,
   createEntryRow,
   createRenderGuard,
   createRowState,
@@ -55,10 +56,10 @@ const rowState = createRowState<string>();
  *
  * Deleting discards captured text that can't be recovered by re-archiving —
  * the page may be gone, paywalled, or simply different — so a single stray
- * click shouldn't do it. Arming one row at a time keeps this to a single id
- * and needs no timers: clicking Delete elsewhere just moves the confirmation.
+ * click shouldn't do it. Arming one row at a time needs no timers: clicking
+ * Delete elsewhere just moves the confirmation.
  */
-let armedDeleteId: string | null = null;
+const armedDelete = createArmedRow<string>();
 
 /** Wires the search box; the archive re-filters in place as the query changes. */
 export function initArchiveSearch(input: HTMLInputElement, container: HTMLElement): void {
@@ -66,14 +67,14 @@ export function initArchiveSearch(input: HTMLInputElement, container: HTMLElemen
   input.addEventListener('input', () => {
     // Rows move as the query narrows, so an armed Delete shouldn't outlive the
     // list it was aimed at.
-    armedDeleteId = null;
+    armedDelete.clear();
     renderHits(container);
   });
 }
 
 /** Reopens an archived page. The entry stays put — Delete is the way to remove it. */
 async function restoreEntry(entry: ArchiveEntry, container: HTMLElement): Promise<void> {
-  armedDeleteId = null;
+  armedDelete.clear();
   await rowState.run(
     entry.id,
     async () => {
@@ -84,13 +85,13 @@ async function restoreEntry(entry: ArchiveEntry, container: HTMLElement): Promis
 }
 
 async function deleteEntry(entry: ArchiveEntry, container: HTMLElement): Promise<void> {
-  if (armedDeleteId !== entry.id) {
-    armedDeleteId = entry.id;
+  if (!armedDelete.isArmed(entry.id)) {
+    armedDelete.arm(entry.id);
     renderHits(container);
     return;
   }
 
-  armedDeleteId = null;
+  armedDelete.clear();
   await rowState.run(
     entry.id,
     async () => {
@@ -107,7 +108,7 @@ async function deleteEntry(entry: ArchiveEntry, container: HTMLElement): Promise
 function buildRow(hit: SearchHit, container: HTMLElement): HTMLLIElement {
   const { entry } = hit;
   const busy = rowState.isPending(entry.id);
-  const armed = armedDeleteId === entry.id;
+  const armed = armedDelete.isArmed(entry.id);
 
   const row = createEntryRow({
     title: entry.title,

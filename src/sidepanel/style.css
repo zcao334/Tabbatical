@@ -179,6 +179,50 @@ h1 {
   cursor: default;
 }
 
+/* Cancel backs out of a picker; it shouldn't compete with the real choices. */
+.row-button--quiet {
+  border-color: transparent;
+  background: none;
+  color: #5f6368;
+}
+
+.row-button--quiet:hover:not(:disabled) {
+  background: #f1f3f4;
+}
+
+/* The custom snooze field takes its own line — a text input alongside buttons
+   in a side panel leaves it too narrow to read what you typed. */
+.row-form {
+  display: flex;
+  flex-wrap: wrap;
+  flex-basis: 100%;
+  align-items: center;
+  gap: 6px;
+}
+
+.row-input {
+  font: inherit;
+  font-size: 12px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+}
+
+.row-input:focus {
+  outline: none;
+  border-color: #1a73e8;
+}
+
+/* Empty until the input is rejected, so it occupies no space until it says
+   something. */
+.row-hint:not(:empty) {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: #c5221f;
+}
+
 /* The armed state of a two-step delete — it should not look like a peer of Restore. */
 .row-button--danger {
   border-color: #f5c0be;
