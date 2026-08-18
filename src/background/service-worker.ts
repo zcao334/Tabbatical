@@ -5,10 +5,16 @@ import {
   replaceTabActivity,
   setTabActivity,
 } from '../shared/storage';
-import { isArchiveTabRequest, isExtractTabRequest, isSnoozeTabRequest } from '../shared/messages';
+import {
+  isArchiveTabRequest,
+  isExtractTabRequest,
+  isSnoozeActionRequest,
+  isSnoozeTabRequest,
+  type SnoozeActionResponse,
+} from '../shared/messages';
 import { extractTabContent } from './extraction';
 import { archiveTab } from './archive';
-import { handleSnoozeAlarm, reconcileSnoozes, snoozeTab } from './snooze';
+import { cancelSnooze, handleSnoozeAlarm, reconcileSnoozes, snoozeTab, wakeSnoozedTab } from './snooze';
 
 // A tab must stay active continuously for this long before it's recorded —
 // filters out incidental alt-tab flicker from counting as a real visit.
@@ -156,6 +162,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (isSnoozeTabRequest(message)) {
     snoozeTab(message.tabId, message.durationMs).then(sendResponse);
+    return true;
+  }
+  if (isSnoozeActionRequest(message)) {
+    const { action, id } = message;
+    (action === 'wake' ? wakeSnoozedTab(id) : cancelSnooze(id))
+      .then((): SnoozeActionResponse => ({ status: 'ok' }))
+      .catch((error): SnoozeActionResponse => {
+        console.error('[Tabbatical] Snooze action failed', error);
+        return { status: 'failed' };
+      })
+      .then(sendResponse);
     return true;
   }
   return;

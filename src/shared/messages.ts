@@ -100,6 +100,34 @@ export type SnoozeTabResponse =
   | { status: 'snoozed'; wakeAt: number }
   | { status: 'failed' };
 
+export const SNOOZE_ACTION_REQUEST = 'tab-review:snooze-action';
+
+/**
+ * Acts on a snooze that is already scheduled: bring it back now, or drop it.
+ *
+ * Routed through the background rather than done in the panel so that waking
+ * early runs the same code as waking on the alarm, and so that clearing the
+ * alarm stays with the worker that owns it.
+ */
+export interface SnoozeActionRequest {
+  type: typeof SNOOZE_ACTION_REQUEST;
+  action: 'wake' | 'cancel';
+  id: string;
+}
+
+export type SnoozeActionResponse = { status: 'ok' } | { status: 'failed' };
+
+export function isSnoozeActionRequest(value: unknown): value is SnoozeActionRequest {
+  const action = (value as { action?: unknown } | null)?.action;
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { type?: unknown }).type === SNOOZE_ACTION_REQUEST &&
+    (action === 'wake' || action === 'cancel') &&
+    typeof (value as { id?: unknown }).id === 'string'
+  );
+}
+
 export function isSnoozeTabRequest(value: unknown): value is SnoozeTabRequest {
   return (
     typeof value === 'object' &&

@@ -12,6 +12,9 @@
       <button id="tab-digest" class="tab" role="tab" aria-selected="true" aria-controls="view-digest">
         Review
       </button>
+      <button id="tab-snoozed" class="tab" role="tab" aria-selected="false" aria-controls="view-snoozed">
+        Snoozed
+      </button>
       <button id="tab-archive" class="tab" role="tab" aria-selected="false" aria-controls="view-archive">
         Archive
       </button>
@@ -20,6 +23,11 @@
     <section id="view-digest" role="tabpanel" aria-labelledby="tab-digest">
       <p class="subtitle">Tabs ranked by how stale they are — oldest and least-used first.</p>
       <ul id="digest-list" class="entry-list"></ul>
+    </section>
+
+    <section id="view-snoozed" role="tabpanel" aria-labelledby="tab-snoozed" hidden>
+      <p class="subtitle">Tabs you've parked, soonest to return first.</p>
+      <ul id="snoozed-list" class="entry-list"></ul>
     </section>
 
     <section id="view-archive" role="tabpanel" aria-labelledby="tab-archive" hidden>

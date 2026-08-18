@@ -144,7 +144,35 @@ export async function wakeSnoozedTab(id: string): Promise<void> {
     }
   }
 
+  await forgetSnooze(id);
+}
+
+/**
+ * Drop a snooze without reopening the tab.
+ *
+ * Strictly more destructive than deleting an archive entry: nothing was
+ * captured, so the record is the last trace of the page. The confirmation is
+ * the caller's job.
+ */
+export async function cancelSnooze(id: string): Promise<void> {
+  await forgetSnooze(id);
+}
+
+/**
+ * Clear both halves of a snooze.
+ *
+ * The alarm has to go with the entry. On the normal path it has already fired
+ * and clearing is a no-op, but waking early or cancelling leaves it scheduled
+ * with nothing behind it — individually harmless, since the handler no-ops on
+ * a missing entry, but they accumulate in the alarm list.
+ */
+async function forgetSnooze(id: string): Promise<void> {
   await removeSnoozedTab(id);
+  try {
+    await chrome.alarms.clear(snoozeAlarmName(id));
+  } catch (error) {
+    console.error('[Tabbatical] Failed to clear a snooze alarm', error);
+  }
 }
 
 /** Routes an alarm to its snooze, ignoring alarms that belong to other features. */

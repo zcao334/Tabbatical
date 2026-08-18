@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { handleSnoozeAlarm, reconcileSnoozes, snoozeTab, wakeSnoozedTab } from './snooze';
+import {
+  cancelSnooze,
+  handleSnoozeAlarm,
+  reconcileSnoozes,
+  snoozeTab,
+  wakeSnoozedTab,
+} from './snooze';
 import { MAX_SNOOZE_MS, MIN_SNOOZE_MS, snoozeAlarmName } from '../shared/snooze';
 import { addSnoozedTab, getSnoozedTabs, getTabActivityMap, setTabActivity } from '../shared/storage';
 import type { SnoozedTab } from '../shared/types';
@@ -17,6 +23,11 @@ const tabsCreate = vi.fn(
 );
 const tabsRemove = vi.fn(async (tabId: number) => {
   delete openTabs[tabId];
+});
+const alarmsClear = vi.fn(async (name: string) => {
+  const existed = name in scheduled;
+  delete scheduled[name];
+  return existed;
 });
 const alarmsCreate = vi.fn(async (name: string, info: chrome.alarms.AlarmCreateInfo) => {
   scheduled[name] = { name, scheduledTime: info.when ?? 0 };
@@ -43,6 +54,7 @@ vi.stubGlobal('chrome', {
   alarms: {
     create: alarmsCreate,
     get: async (name: string) => scheduled[name],
+    clear: alarmsClear,
   },
 });
 
@@ -289,6 +301,20 @@ describe('wakeSnoozedTab', () => {
     expect(await entriesIn()).toHaveLength(0);
   });
 
+  it('clears the alarm, so waking early leaves nothing scheduled', async () => {
+    // On the normal path the alarm has already fired and this is a no-op; it
+    // matters when the user opens the tab ahead of time.
+    await addSnoozedTab(snoozed());
+    scheduled[snoozeAlarmName('entry-1')] = {
+      name: snoozeAlarmName('entry-1'),
+      scheduledTime: NOW + DAY,
+    };
+
+    await wakeSnoozedTab('entry-1');
+
+    expect(scheduled).toEqual({});
+  });
+
   it('does nothing for an id that is no longer stored', async () => {
     await wakeSnoozedTab('gone');
     expect(tabsCreate).not.toHaveBeenCalled();
@@ -362,5 +388,54 @@ describe('reconcileSnoozes', () => {
 
     expect(tabsCreate).not.toHaveBeenCalled();
     expect(alarmsCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('cancelSnooze', () => {
+  it('drops the record without reopening the tab', async () => {
+    await addSnoozedTab(snoozed());
+
+    await cancelSnooze('entry-1');
+
+    expect(await entriesIn()).toHaveLength(0);
+    expect(tabsCreate).not.toHaveBeenCalled();
+  });
+
+  it('clears the alarm, so a cancelled snooze cannot fire later', async () => {
+    await addSnoozedTab(snoozed());
+    scheduled[snoozeAlarmName('entry-1')] = {
+      name: snoozeAlarmName('entry-1'),
+      scheduledTime: NOW + DAY,
+    };
+
+    await cancelSnooze('entry-1');
+
+    expect(scheduled).toEqual({});
+  });
+
+  it('leaves other snoozes alone', async () => {
+    await addSnoozedTab(snoozed({ id: 'a' }));
+    await addSnoozedTab(snoozed({ id: 'b' }));
+
+    await cancelSnooze('a');
+
+    expect((await entriesIn()).map((entry) => entry.id)).toEqual(['b']);
+  });
+
+  it('is harmless on an id that is already gone', async () => {
+    await expect(cancelSnooze('gone')).resolves.toBeUndefined();
+  });
+});
+
+describe('an alarm that outlives its entry', () => {
+  it('reopens nothing', async () => {
+    // The belt to forgetSnooze's braces: even if an orphan alarm survives, the
+    // handler must not resurrect a tab the user cancelled.
+    await addSnoozedTab(snoozed());
+    await cancelSnooze('entry-1');
+
+    await handleSnoozeAlarm({ name: snoozeAlarmName('entry-1') } as chrome.alarms.Alarm);
+
+    expect(tabsCreate).not.toHaveBeenCalled();
   });
 });
