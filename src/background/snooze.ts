@@ -15,7 +15,13 @@ import {
   snoozeAlarmName,
   snoozeIdFromAlarm,
 } from '../shared/snooze';
-import { addSnoozedTab, getSnoozedTabs, removeSnoozedTab } from '../shared/storage';
+import {
+  addSnoozedTab,
+  getSnoozedTabs,
+  getTabActivityMap,
+  removeSnoozedTab,
+  setTabActivity,
+} from '../shared/storage';
 import type { SnoozedTab } from '../shared/types';
 
 /**
@@ -43,6 +49,10 @@ export async function snoozeTab(tabId: number, durationMs: number): Promise<Snoo
   if (!url) return { status: 'failed' };
 
   const now = Date.now();
+  // Read before the tab closes: onRemoved prunes this entry, so the idle clock
+  // is only available up to this point.
+  const tracked = (await getTabActivityMap())[tabId];
+
   const entry: SnoozedTab = {
     id: crypto.randomUUID(),
     url,
@@ -50,6 +60,11 @@ export async function snoozeTab(tabId: number, durationMs: number): Promise<Snoo
     faviconUrl: tab.favIconUrl?.trim() || undefined,
     snoozedAt: now,
     wakeAt: now + durationMs,
+    // A tab can be snoozed before it has dwelled long enough to be tracked, in
+    // which case there is no history to carry and the snooze itself is the
+    // most recent thing that happened to it.
+    lastActiveAt: tracked?.lastActiveAt ?? now,
+    revisitCount: tracked?.revisitCount ?? 0,
   };
 
   // Written and scheduled before the tab is touched. A failure here leaves the
@@ -89,10 +104,11 @@ export async function wakeSnoozedTab(id: string): Promise<void> {
   // Already woken, or cancelled while the alarm was in flight.
   if (!entry) return;
 
+  let created: chrome.tabs.Tab;
   try {
     // Inactive: a tab surfacing on a timer must not steal focus from whatever
     // the user is actually doing.
-    await chrome.tabs.create({ url: entry.url, active: false });
+    created = await chrome.tabs.create({ url: entry.url, active: false });
   } catch (error) {
     // Deliberately kept in storage. This entry is the only record of the page,
     // so discarding it on a failed reopen would lose it outright — whereas
@@ -100,6 +116,32 @@ export async function wakeSnoozedTab(id: string): Promise<void> {
     // point the usual cause (no window open yet) has gone away.
     console.error('[Tabbatical] Failed to reopen a snoozed tab', error);
     return;
+  }
+
+  // Tracked explicitly, because nothing else would do it. A background tab
+  // fires no onActivated, and the onUpdated listener refuses to create entries
+  // so that a tab the user just opened doesn't jump straight into the digest.
+  // A woken tab is the opposite case: it's a deferral coming due, and a snooze
+  // that returns a tab into invisibility defeats the point of snoozing.
+  if (created?.id != null) {
+    try {
+      await setTabActivity({
+        tabId: created.id,
+        url: entry.url,
+        title: entry.title,
+        // Restores the clock from before the snooze, so the digest ranks it as
+        // the deferral it is rather than as a brand-new tab.
+        lastActiveAt: entry.lastActiveAt ?? entry.snoozedAt,
+        revisitCount: entry.revisitCount ?? 0,
+        groupId: null,
+        pinned: false,
+      });
+    } catch (error) {
+      // Not fatal, and deliberately not a reason to keep the entry: the tab is
+      // already back, and leaving the record would reopen it a second time.
+      // initializeExistingTabs picks it up at the next startup.
+      console.error('[Tabbatical] Reopened a snoozed tab but could not track it', error);
+    }
   }
 
   await removeSnoozedTab(id);

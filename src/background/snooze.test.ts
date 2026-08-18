@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { handleSnoozeAlarm, reconcileSnoozes, snoozeTab, wakeSnoozedTab } from './snooze';
 import { MAX_SNOOZE_MS, MIN_SNOOZE_MS, snoozeAlarmName } from '../shared/snooze';
-import { addSnoozedTab, getSnoozedTabs } from '../shared/storage';
+import { addSnoozedTab, getSnoozedTabs, getTabActivityMap, setTabActivity } from '../shared/storage';
 import type { SnoozedTab } from '../shared/types';
 
 const NOW = new Date('2026-08-18T09:00:00Z').getTime();
@@ -12,7 +12,9 @@ let store: Record<string, unknown> = {};
 let openTabs: Record<number, chrome.tabs.Tab> = {};
 let scheduled: Record<string, { name: string; scheduledTime: number }> = {};
 
-const tabsCreate = vi.fn(async (_props: chrome.tabs.CreateProperties) => ({}) as chrome.tabs.Tab);
+const tabsCreate = vi.fn(
+  async (_props: chrome.tabs.CreateProperties) => ({ id: 99 }) as chrome.tabs.Tab,
+);
 const tabsRemove = vi.fn(async (tabId: number) => {
   delete openTabs[tabId];
 });
@@ -72,6 +74,7 @@ beforeEach(() => {
   openTabs = {};
   scheduled = {};
   vi.clearAllMocks();
+  tabsCreate.mockResolvedValue({ id: 99 } as chrome.tabs.Tab);
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(Date, 'now').mockReturnValue(NOW);
@@ -168,6 +171,38 @@ describe('snoozeTab', () => {
     expect(await entriesIn()).toHaveLength(1);
   });
 
+  it('carries the idle clock across the snooze', async () => {
+    // Snoozing is a deferral, not a visit, so the tab must not come back
+    // looking freshly used.
+    openTab(7);
+    await setTabActivity({
+      tabId: 7,
+      url: 'https://example.com/7',
+      title: 'Tab 7',
+      lastActiveAt: NOW - 5 * DAY,
+      revisitCount: 4,
+      groupId: null,
+      pinned: false,
+    });
+
+    await snoozeTab(7, DAY);
+
+    const [entry] = await entriesIn();
+    expect(entry.lastActiveAt).toBe(NOW - 5 * DAY);
+    expect(entry.revisitCount).toBe(4);
+  });
+
+  it('has something to carry even for a tab that was never tracked', async () => {
+    // A tab can be snoozed before it dwells long enough to be tracked.
+    openTab(7);
+
+    await snoozeTab(7, DAY);
+
+    const [entry] = await entriesIn();
+    expect(entry.lastActiveAt).toBe(NOW);
+    expect(entry.revisitCount).toBe(0);
+  });
+
   it('falls back to the URL when the tab has no title', async () => {
     openTab(7, { title: '   ' });
     await snoozeTab(7, DAY);
@@ -196,6 +231,62 @@ describe('wakeSnoozedTab', () => {
     await wakeSnoozedTab('entry-1');
 
     expect(await entriesIn()).toHaveLength(1);
+  });
+
+  it('puts the reopened tab straight into the digest', async () => {
+    // Nothing else would: a background tab fires no onActivated, and the
+    // onUpdated listener refuses to create entries.
+    await addSnoozedTab(snoozed({ lastActiveAt: NOW - 5 * DAY, revisitCount: 4 }));
+
+    await wakeSnoozedTab('entry-1');
+
+    const tracked = (await getTabActivityMap())[99];
+    expect(tracked).toMatchObject({
+      tabId: 99,
+      url: 'https://example.com/saved',
+      title: 'Saved',
+      lastActiveAt: NOW - 5 * DAY,
+      revisitCount: 4,
+    });
+  });
+
+  it('dates a legacy entry from its snooze time', async () => {
+    // Entries written before carry-over landed have no clock to restore.
+    const legacy = snoozed();
+    delete legacy.lastActiveAt;
+    delete legacy.revisitCount;
+    await addSnoozedTab(legacy);
+
+    await wakeSnoozedTab('entry-1');
+
+    expect((await getTabActivityMap())[99]).toMatchObject({
+      lastActiveAt: legacy.snoozedAt,
+      revisitCount: 0,
+    });
+  });
+
+  it('does not track anything when the reopen yields no tab id', async () => {
+    await addSnoozedTab(snoozed());
+    tabsCreate.mockResolvedValueOnce({} as chrome.tabs.Tab);
+
+    await wakeSnoozedTab('entry-1');
+
+    expect(await getTabActivityMap()).toEqual({});
+    expect(await entriesIn()).toHaveLength(0);
+  });
+
+  it('still clears the record when tracking fails, so it cannot reopen twice', async () => {
+    await addSnoozedTab(snoozed());
+    const set = chrome.storage.local.set;
+    chrome.storage.local.set = (async (items: Record<string, unknown>) => {
+      if (items.tabActivityMap) throw new Error('storage full');
+      return set(items);
+    }) as typeof chrome.storage.local.set;
+
+    await wakeSnoozedTab('entry-1');
+    chrome.storage.local.set = set;
+
+    expect(await entriesIn()).toHaveLength(0);
   });
 
   it('does nothing for an id that is no longer stored', async () => {

@@ -80,6 +80,21 @@ export interface SnoozedTab {
   faviconUrl?: string;
   snoozedAt: number;
   wakeAt: number;
+  /**
+   * The tab's idle clock at the moment it was snoozed, carried across the
+   * snooze and restored on wake.
+   *
+   * Snoozing is a deferral, not a visit — a tab that was already stale comes
+   * back stale rather than resetting to the bottom of the digest. Revisits
+   * come along for the same reason in the other direction: staleness
+   * subtracts them, so a tab you use constantly returns correctly ranked
+   * *below* one you never touch.
+   *
+   * Optional because entries written before this landed don't carry them;
+   * those fall back to the snooze time and a zero count.
+   */
+  lastActiveAt?: number;
+  revisitCount?: number;
 }
 
 /**
