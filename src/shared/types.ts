@@ -24,6 +24,15 @@ export interface TabActivity {
 export interface StalenessConfig {
   idleDayWeight: number;
   revisitWeight: number;
+  /**
+   * Ceiling on the total discount revisits can earn a tab.
+   *
+   * Revisits never expire, so without a ceiling a tab opened twenty times
+   * carries -100 for the rest of its life and needs ten idle days just to
+   * reach zero. Being used often should buy a tab patience, not exemption
+   * from ever being reviewed again.
+   */
+  maxRevisitPenalty: number;
   activeGroupPenalty: number;
   pinnedPenalty: number;
 }
@@ -31,6 +40,9 @@ export interface StalenessConfig {
 export const DEFAULT_STALENESS_CONFIG: StalenessConfig = {
   idleDayWeight: 10,
   revisitWeight: 5,
+  // Five idle days of credit: enough that a tab in daily use stays out of the
+  // way, short of letting it hide forever.
+  maxRevisitPenalty: 50,
   activeGroupPenalty: 15,
   pinnedPenalty: 1000,
 };

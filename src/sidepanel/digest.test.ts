@@ -291,3 +291,50 @@ describe('while a snooze is in flight', () => {
     expect(labelsIn(rows(container)[0])).toEqual(['Keep', 'Snooze', 'Archive']);
   });
 });
+
+describe('the score on a row', () => {
+  /** Seeds one tab directly, so the test owns its idle time and revisit count. */
+  async function seed(overrides: Partial<TabActivity>): Promise<HTMLElement> {
+    store = {};
+    await setTabActivity({
+      tabId: nextTabId++,
+      url: 'https://example.com/scored',
+      title: 'Scored',
+      lastActiveAt: Date.now(),
+      revisitCount: 0,
+      groupId: null,
+      pinned: false,
+      ...overrides,
+    });
+
+    const container = document.createElement('ul');
+    document.body.appendChild(container);
+    await renderDigest(container);
+    await flush();
+    return container;
+  }
+
+  const metaOf = (container: HTMLElement) =>
+    rows(container)[0].querySelector('.row-meta')?.textContent ?? '';
+
+  it('never shows a negative score', async () => {
+    // A tab visited just now scores below zero once revisits are subtracted.
+    // The minus sign reads as a fault, and says nothing "active today" doesn't.
+    const container = await seed({ lastActiveAt: Date.now(), revisitCount: 2 });
+
+    expect(metaOf(container)).toContain('score 0');
+    expect(metaOf(container)).not.toContain('-');
+  });
+
+  it('still shows a real score above zero', async () => {
+    const container = await seed({ lastActiveAt: Date.now() - 5 * MS_PER_DAY });
+
+    expect(metaOf(container)).toContain('score 50');
+  });
+
+  it('floors the tooltip too, so the two agree', async () => {
+    const container = await seed({ lastActiveAt: Date.now(), revisitCount: 2 });
+
+    expect(rows(container)[0].title).toContain('score 0');
+  });
+});

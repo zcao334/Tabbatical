@@ -64,6 +64,7 @@ describe('sanitizeStalenessConfig', () => {
     const stored = {
       idleDayWeight: 20,
       revisitWeight: 1,
+      maxRevisitPenalty: 30,
       activeGroupPenalty: 0,
       pinnedPenalty: 500,
     };
@@ -140,5 +141,52 @@ describe('sanitizeStalenessConfig', () => {
       expect(value).toBeGreaterThanOrEqual(weight.min);
       expect(value).toBeLessThanOrEqual(weight.max);
     }
+  });
+});
+
+describe('the revisit penalty ceiling', () => {
+  const idleFor = (days: number, revisitCount: number) =>
+    computeStaleness(
+      { lastActiveAt: now - days * 86_400_000, revisitCount, pinned: false, isInActiveGroup: false },
+      now,
+    );
+
+  it('subtracts per revisit while under the ceiling', () => {
+    expect(idleFor(10, 0) - idleFor(10, 1)).toBe(DEFAULT_STALENESS_CONFIG.revisitWeight);
+  });
+
+  it('stops subtracting once the ceiling is reached', () => {
+    // Ten revisits at 5 apiece is the default ceiling of 50; the eleventh and
+    // the fiftieth cost nothing more.
+    expect(idleFor(10, 10)).toBe(idleFor(10, 11));
+    expect(idleFor(10, 10)).toBe(idleFor(10, 50));
+  });
+
+  it('lets a much-used tab come up for review once it is genuinely idle', () => {
+    // The point of the ceiling: without it, 40 revisits is -200, which 20 idle
+    // days could not overcome, and the tab would never be surfaced again.
+    expect(idleFor(20, 40)).toBeGreaterThan(0);
+  });
+
+  it('honours a ceiling the user has lowered', () => {
+    const config = { ...DEFAULT_STALENESS_CONFIG, maxRevisitPenalty: 5 };
+    const score = computeStaleness(
+      { lastActiveAt: now - 10 * 86_400_000, revisitCount: 20, pinned: false, isInActiveGroup: false },
+      now,
+      config,
+    );
+
+    expect(score).toBe(100 - 5);
+  });
+
+  it('drops the revisit discount entirely at a ceiling of zero', () => {
+    const config = { ...DEFAULT_STALENESS_CONFIG, maxRevisitPenalty: 0 };
+    const score = computeStaleness(
+      { lastActiveAt: now - 10 * 86_400_000, revisitCount: 20, pinned: false, isInActiveGroup: false },
+      now,
+      config,
+    );
+
+    expect(score).toBe(100);
   });
 });

@@ -17,7 +17,10 @@ export function computeStaleness(
   const daysSinceLastActive = Math.max(0, now - tab.lastActiveAt) / MS_PER_DAY;
 
   let score = daysSinceLastActive * config.idleDayWeight;
-  score -= tab.revisitCount * config.revisitWeight;
+  // Capped: revisits are never forgotten, so an uncapped discount would let a
+  // tab opened often enough sit below the review threshold permanently, long
+  // after it stopped being one the user actually returns to.
+  score -= Math.min(tab.revisitCount * config.revisitWeight, config.maxRevisitPenalty);
   if (tab.isInActiveGroup) score -= config.activeGroupPenalty;
   if (tab.pinned) score -= config.pinnedPenalty;
 
@@ -54,6 +57,13 @@ export const STALENESS_WEIGHTS: StalenessWeight[] = [
     hint: 'How much coming back to a tab protects it from being surfaced.',
     min: 0,
     max: 100,
+  },
+  {
+    key: 'maxRevisitPenalty',
+    label: 'Most points revisits can take off',
+    hint: 'A ceiling, so a much-used tab still comes up for review eventually.',
+    min: 0,
+    max: 10_000,
   },
   {
     key: 'activeGroupPenalty',
