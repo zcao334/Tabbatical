@@ -8,11 +8,7 @@
  * rather than one per view.
  */
 
-import { MS_PER_DAY } from '../shared/types';
-
-const MS_PER_MINUTE = 60_000;
-const MS_PER_HOUR = 60 * MS_PER_MINUTE;
-const MS_PER_WEEK = 7 * MS_PER_DAY;
+import { MS_PER_DAY, MS_PER_HOUR, MS_PER_MINUTE, MS_PER_WEEK } from '../shared/types';
 
 const DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
   month: 'short',
@@ -38,6 +34,20 @@ export function formatArchivedAt(archivedAt: number, now: number = Date.now()): 
   if (elapsed < MS_PER_DAY) return `${Math.floor(elapsed / MS_PER_HOUR)}h ago`;
   if (elapsed < MS_PER_WEEK) return `${Math.floor(elapsed / MS_PER_DAY)}d ago`;
   return DATE_FORMAT.format(archivedAt);
+}
+
+/**
+ * How long a tab has sat untouched, as the digest states it.
+ *
+ * Coarser than the other two on purpose: this line is the case for closing the
+ * tab, and the decision turns on days, not on whether it was four or six hours
+ * ago. Anything inside a day is "active today" — a single bucket, because every
+ * value in it argues for keeping the tab.
+ */
+export function formatDaysIdle(lastActiveAt: number, now: number = Date.now()): string {
+  const days = (now - lastActiveAt) / MS_PER_DAY;
+  if (days < 1) return 'active today';
+  return `${Math.floor(days)}d idle`;
 }
 
 /**

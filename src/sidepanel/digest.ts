@@ -1,6 +1,7 @@
 import { scoreTrackedTabs, type ScoredTab } from '../shared/review';
 import { patchTabActivity } from '../shared/storage';
-import { MS_PER_DAY, type TabActivity } from '../shared/types';
+import type { TabActivity } from '../shared/types';
+import { formatDaysIdle } from './time';
 import { isInjectableUrl, requestHostPermission } from '../shared/permissions';
 import {
   ARCHIVE_TAB_REQUEST,
@@ -20,12 +21,6 @@ import {
   type RowAction,
   type RowOptions,
 } from './components';
-
-function formatDaysIdle(lastActiveAt: number): string {
-  const days = (Date.now() - lastActiveAt) / MS_PER_DAY;
-  if (days < 1) return 'active today';
-  return `${Math.floor(days)}d idle`;
-}
 
 /** What a row is doing while it's busy. Shown on the row, so it reads as a label. */
 type PendingVerb = 'Archiving…' | 'Snoozing…';

@@ -6,11 +6,7 @@
  * one importing the other's module.
  */
 
-import { MS_PER_DAY } from './types';
-
-const MS_PER_MINUTE = 60_000;
-const MS_PER_HOUR = 60 * MS_PER_MINUTE;
-const MS_PER_WEEK = 7 * MS_PER_DAY;
+import { MS_PER_DAY, MS_PER_HOUR, MS_PER_MINUTE, MS_PER_WEEK } from './types';
 
 /**
  * Chrome throttles alarms shorter than a minute in a packed extension, so

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatArchivedAt, formatWakeIn } from './time';
+import { formatArchivedAt, formatDaysIdle, formatWakeIn } from './time';
 
 const NOW = new Date('2026-08-14T12:00:00Z').getTime();
 const MINUTE = 60_000;
@@ -33,6 +33,27 @@ describe('formatArchivedAt', () => {
     expect(formatArchivedAt(NOW - MINUTE, NOW)).toBe('1m ago');
     expect(formatArchivedAt(NOW - HOUR, NOW)).toBe('1h ago');
     expect(formatArchivedAt(NOW - DAY, NOW)).toBe('1d ago');
+  });
+});
+
+describe('formatDaysIdle', () => {
+  it('buckets everything inside a day as active today', () => {
+    expect(formatDaysIdle(NOW, NOW)).toBe('active today');
+    expect(formatDaysIdle(NOW - 23 * HOUR, NOW)).toBe('active today');
+  });
+
+  it('counts whole days once a tab has gone a day untouched', () => {
+    expect(formatDaysIdle(NOW - DAY, NOW)).toBe('1d idle');
+    expect(formatDaysIdle(NOW - 5 * DAY, NOW)).toBe('5d idle');
+  });
+
+  it('truncates rather than rounding up', () => {
+    // A tab idle for a day and a half is not two days idle.
+    expect(formatDaysIdle(NOW - 1.9 * DAY, NOW)).toBe('1d idle');
+  });
+
+  it('does not read as negative when the timestamp is slightly ahead', () => {
+    expect(formatDaysIdle(NOW + HOUR, NOW)).toBe('active today');
   });
 });
 

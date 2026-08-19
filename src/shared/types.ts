@@ -1,5 +1,15 @@
-/** Shared by staleness scoring and both views' relative-time labels. */
-export const MS_PER_DAY = 1000 * 60 * 60 * 24;
+/**
+ * The units everything here reasons in: staleness scoring, the snooze parser
+ * and every relative-time label in the panel.
+ *
+ * Together rather than per-module because the snooze parser and the countdown
+ * that reads its result have to agree on what a week is, and two identical
+ * private copies agree only until one of them is edited.
+ */
+export const MS_PER_MINUTE = 60_000;
+export const MS_PER_HOUR = 60 * MS_PER_MINUTE;
+export const MS_PER_DAY = 24 * MS_PER_HOUR;
+export const MS_PER_WEEK = 7 * MS_PER_DAY;
 
 export interface TabActivity {
   tabId: number;
