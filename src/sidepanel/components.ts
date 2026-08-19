@@ -20,15 +20,15 @@ export interface RowAction {
 export interface RowOptions {
   title: string;
   /**
-   * Secondary line under the title — staleness for the digest, source and date
-   * for the archive.
+   * Secondary line under the title — staleness for the digest, when it was
+   * archived for the archive, when it returns for a snooze.
    *
-   * Given as segments, only the first of which is allowed to shrink. In a side
-   * panel this line runs out of room constantly, and a single string truncates
-   * from the right, which drops the timestamp — the part that changes and so
-   * the part worth reading. Put the expendable segment first.
+   * One string, truncating from the right. This was briefly a list of segments
+   * where only the first could shrink, to protect a trailing timestamp; that
+   * turned out to clip digits off the digest's score instead, turning 50 into
+   * a plausible 5, and every view ended up passing a single string anyway.
    */
-  meta: string | string[];
+  meta: string;
   faviconUrl?: string;
   /** Small label beside the title, e.g. marking an entry as metadata-only. */
   badge?: string;
@@ -111,22 +111,12 @@ export function createEntryRow(options: RowOptions): HTMLLIElement {
   const meta = document.createElement('div');
   meta.className = 'row-meta';
 
-  const segments = (Array.isArray(options.meta) ? options.meta : [options.meta]).filter(Boolean);
-  segments.forEach((segment, index) => {
-    if (index > 0) {
-      const separator = document.createElement('span');
-      separator.className = 'row-meta-separator';
-      // Spaces live in the text, not in a CSS gap, so the line still reads as
-      // a sentence when copied or announced by a screen reader.
-      separator.textContent = ' · ';
-      meta.appendChild(separator);
-    }
-
-    const span = document.createElement('span');
-    span.className = index === 0 ? 'row-meta-lead' : 'row-meta-fixed';
-    span.textContent = segment;
-    meta.appendChild(span);
-  });
+  if (options.meta) {
+    const text = document.createElement('span');
+    text.className = 'row-meta-text';
+    text.textContent = options.meta;
+    meta.appendChild(text);
+  }
 
   if (options.badge) {
     const badge = document.createElement('span');
@@ -174,31 +164,40 @@ export function createEntryRow(options: RowOptions): HTMLLIElement {
   return li;
 }
 
-/** Replaces a list's contents with a single explanatory row. */
-export function renderEmptyState(container: HTMLElement, message: string): void {
+/** Replaces a list's contents with a single row standing in for the list. */
+function renderPlaceholder(
+  container: HTMLElement,
+  className: string,
+  message: string,
+  role?: string,
+): void {
   container.innerHTML = '';
-  const empty = document.createElement('li');
-  empty.className = 'empty-state';
-  empty.textContent = message;
-  container.appendChild(empty);
+  const item = document.createElement('li');
+  item.className = className;
+  if (role) item.setAttribute('role', role);
+  item.textContent = message;
+  container.appendChild(item);
+}
+
+/** Says a list has nothing in it — a normal state, not a failure. */
+export function renderEmptyState(container: HTMLElement, message: string): void {
+  renderPlaceholder(container, 'empty-state', message);
 }
 
 /**
  * Says a list is still being read, for the one case where that takes long
  * enough to see.
  *
- * Used only on a genuine first load. A view that re-renders from data it
- * already holds would flash this for a frame or two, which reads as a glitch
- * rather than as progress — worse than the brief stillness it replaces.
+ * Used only when there's nothing on screen to keep. A view that re-renders
+ * from data it already holds would flash this for a frame or two, which reads
+ * as a glitch rather than as progress.
+ *
+ * role="status" so the wait isn't silent for a screen reader; the empty state
+ * needs no such announcement, since it's the resting state of the list rather
+ * than something that resolves.
  */
 export function renderLoadingState(container: HTMLElement, message = 'Loading…'): void {
-  container.innerHTML = '';
-  const loading = document.createElement('li');
-  loading.className = 'loading-state';
-  // Announced when it appears, so the wait isn't silent for a screen reader.
-  loading.setAttribute('role', 'status');
-  loading.textContent = message;
-  container.appendChild(loading);
+  renderPlaceholder(container, 'loading-state', message, 'status');
 }
 
 export interface RowActionOptions<P = unknown> {

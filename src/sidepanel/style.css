@@ -125,26 +125,18 @@ h1 {
   display: flex;
   align-items: baseline;
   min-width: 0;
-  /* Only the leading segment is allowed to shrink, so the fixed ones will run
-     past the end of a narrow row. Clipped here, or they paint out over the
-     buttons instead of stopping at the edge of the text column. */
   overflow: hidden;
   font-size: 11px;
   color: #5f6368;
 }
 
-/* Only the leading segment gives way, so the timestamp after it always shows. */
-.row-meta-lead {
+/* Truncates from the right, so what's cut is the least important part of the
+   line — each view orders it with that in mind. */
+.row-meta-text {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-.row-meta-fixed,
-.row-meta-separator {
-  flex: none;
-  white-space: pre;
 }
 
 .row-snippet {

@@ -33,29 +33,24 @@ describe('createEntryRow', () => {
     expect(row.querySelector('.row-title')?.textContent).toBe('<img src=x onerror=alert(1)>');
   });
 
-  it('joins meta segments with a separator that survives copying', () => {
-    const row = createEntryRow({ title: 'T', meta: ['example.com', '2h ago'] });
+  it('puts the meta line in a span that can truncate on its own', () => {
+    // The badge sits in the same row and must not shrink with the text.
+    const row = createEntryRow({ title: 'T', meta: 'example.com · 2h ago' });
 
-    expect(row.querySelector('.row-meta')?.textContent).toBe('example.com · 2h ago');
+    expect(row.querySelector('.row-meta-text')?.textContent).toBe('example.com · 2h ago');
   });
 
-  it('lets only the leading meta segment shrink', () => {
-    // A single truncating string drops the timestamp, which is the part worth
-    // reading; the domain is what should give way instead.
-    const row = createEntryRow({ title: 'T', meta: ['averylongdomainname.example.com', '2h ago'] });
+  it('renders no meta text at all when there is none', () => {
+    // An empty string is how the digest hides the line while its snooze
+    // picker is open; a stray empty span would still take up the row.
+    const row = createEntryRow({ title: 'T', meta: '' });
 
-    expect(row.querySelector('.row-meta-lead')?.textContent).toBe('averylongdomainname.example.com');
-    expect(row.querySelector('.row-meta-fixed')?.textContent).toBe('2h ago');
-  });
-
-  it('drops empty meta segments rather than rendering a stray separator', () => {
-    const row = createEntryRow({ title: 'T', meta: ['example.com', ''] });
-
-    expect(row.querySelector('.row-meta')?.textContent).toBe('example.com');
+    expect(row.querySelector('.row-meta-text')).toBeNull();
+    expect(row.querySelector('.row-meta')?.textContent).toBe('');
   });
 
   it('keeps the badge off the title line, so the title gets the full width', () => {
-    const row = createEntryRow({ title: 'T', meta: ['example.com', '2h ago'], badge: 'metadata only' });
+    const row = createEntryRow({ title: 'T', meta: 'example.com · 2h ago', badge: 'metadata only' });
 
     expect(row.querySelector('.row-title')?.querySelector('.row-badge')).toBeNull();
     expect(row.querySelector('.row-meta')?.querySelector('.row-badge')).not.toBeNull();
