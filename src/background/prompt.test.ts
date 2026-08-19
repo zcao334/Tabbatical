@@ -1,0 +1,240 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  handleNotificationButton,
+  handleNotificationClick,
+  maybePromptReview,
+  openReview,
+} from './prompt';
+import { savePromptConfig, setLastPromptedAt, setSessionStartedAt } from '../shared/storage';
+import { PROMPT_INTERVAL_MS, STARTUP_GRACE_MS } from '../shared/prompt';
+import { setTabActivity } from '../shared/storage';
+import { MS_PER_DAY, type TabActivity } from '../shared/types';
+
+const NOW = new Date('2026-08-19T09:00:00Z').getTime();
+const NOTIFICATION_ID = 'tabbatical:review-prompt';
+
+let store: Record<string, unknown> = {};
+
+const notificationsCreate =
+  vi.fn(async (_id: string, _options: chrome.notifications.NotificationOptions) => NOTIFICATION_ID);
+const notificationsClear = vi.fn(async () => true);
+const sidePanelOpen = vi.fn(async () => {});
+const tabsCreate = vi.fn(async () => ({}) as chrome.tabs.Tab);
+const getLastFocused = vi.fn(async () => ({ id: 7 }) as chrome.windows.Window);
+
+vi.stubGlobal('chrome', {
+  storage: {
+    local: {
+      get: async (key: string) => ({ [key]: store[key] }),
+      set: async (items: Record<string, unknown>) => {
+        Object.assign(store, items);
+      },
+    },
+  },
+  tabGroups: { query: async () => [] },
+  notifications: { create: notificationsCreate, clear: notificationsClear },
+  sidePanel: { open: sidePanelOpen },
+  tabs: { create: tabsCreate },
+  windows: { getLastFocused },
+  runtime: { getURL: (path: string) => `chrome-extension://abc/${path}` },
+});
+
+/** Seeds tabs idle long enough to clear the review threshold. */
+async function trackStaleTabs(count: number): Promise<void> {
+  for (let tabId = 1; tabId <= count; tabId++) {
+    const activity: TabActivity = {
+      tabId,
+      url: `https://example.com/${tabId}`,
+      title: `Tab ${tabId}`,
+      lastActiveAt: NOW - 5 * MS_PER_DAY,
+      revisitCount: 0,
+      groupId: null,
+      pinned: false,
+    };
+    await setTabActivity(activity);
+  }
+}
+
+/** Puts the profile in a state where a prompt is owed. */
+async function readyToPrompt(staleTabs = 8): Promise<void> {
+  await trackStaleTabs(staleTabs);
+  await setSessionStartedAt(NOW - STARTUP_GRACE_MS - 1);
+  await setLastPromptedAt(NOW - PROMPT_INTERVAL_MS - 1);
+}
+
+const lastMessage = () => notificationsCreate.mock.calls.at(-1)?.[1]?.message as string | undefined;
+const promptedAt = () =>
+  (store.reviewPromptState as { lastPromptedAt: number } | undefined)?.lastPromptedAt;
+
+beforeEach(() => {
+  store = {};
+  vi.clearAllMocks();
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
+});
+
+describe('maybePromptReview', () => {
+  it('shows the prompt when one is owed', async () => {
+    await readyToPrompt();
+
+    await maybePromptReview(NOW);
+
+    expect(notificationsCreate).toHaveBeenCalledOnce();
+  });
+
+  it('uses a fixed id, so prompts replace rather than stack', async () => {
+    await readyToPrompt();
+
+    await maybePromptReview(NOW);
+
+    expect(notificationsCreate.mock.calls[0][0]).toBe(NOTIFICATION_ID);
+  });
+
+  it('says nothing on a profile with no stale tabs', async () => {
+    // The reason default-on is defensible: a fresh install cannot be nagged.
+    await setSessionStartedAt(NOW - STARTUP_GRACE_MS - 1);
+    await setLastPromptedAt(0);
+
+    await maybePromptReview(NOW);
+
+    expect(notificationsCreate).not.toHaveBeenCalled();
+  });
+
+  it('says nothing when the user has turned it off', async () => {
+    await readyToPrompt();
+    await savePromptConfig({ enabled: false });
+
+    await maybePromptReview(NOW);
+
+    expect(notificationsCreate).not.toHaveBeenCalled();
+  });
+
+  it('does not prompt again on the next alarm tick', async () => {
+    // The alarm fires every 30 minutes; this is what keeps it to once a day.
+    await readyToPrompt();
+
+    await maybePromptReview(NOW);
+    await maybePromptReview(NOW + 30 * 60_000);
+    await maybePromptReview(NOW + 60 * 60_000);
+
+    expect(notificationsCreate).toHaveBeenCalledOnce();
+  });
+
+  it('prompts again a day later', async () => {
+    await readyToPrompt();
+
+    await maybePromptReview(NOW);
+    await maybePromptReview(NOW + PROMPT_INTERVAL_MS);
+
+    expect(notificationsCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it('records the prompt before showing it, so a failure cannot loop', async () => {
+    // If the timestamp were written after a successful create, a throw here
+    // would leave it unset and the next tick would try again in 30 minutes —
+    // one prompt a day becoming one every half hour.
+    await readyToPrompt();
+    notificationsCreate.mockRejectedValueOnce(new Error('notifications disabled'));
+
+    await maybePromptReview(NOW);
+    await maybePromptReview(NOW + 30 * 60_000);
+
+    expect(promptedAt()).toBe(NOW);
+    expect(notificationsCreate).toHaveBeenCalledOnce();
+  });
+
+  it('does not throw when notifications are unavailable', async () => {
+    await readyToPrompt();
+    notificationsCreate.mockRejectedValueOnce(new Error('nope'));
+
+    await expect(maybePromptReview(NOW)).resolves.toBeUndefined();
+  });
+
+  it('offers the batch rather than the whole backlog', async () => {
+    await readyToPrompt(12);
+
+    await maybePromptReview(NOW);
+
+    expect(lastMessage()).toContain('Review 5');
+  });
+
+  it('offers only what is due when that is fewer than the batch', async () => {
+    await readyToPrompt(2);
+
+    await maybePromptReview(NOW);
+
+    expect(lastMessage()).toContain('2 tabs');
+  });
+});
+
+describe('answering the prompt', () => {
+  it('opens the side panel when the notification is clicked', async () => {
+    await handleNotificationClick(NOTIFICATION_ID);
+
+    expect(sidePanelOpen).toHaveBeenCalledWith({ windowId: 7 });
+  });
+
+  it('clears the notification once answered', async () => {
+    await handleNotificationClick(NOTIFICATION_ID);
+
+    expect(notificationsClear).toHaveBeenCalledWith(NOTIFICATION_ID);
+  });
+
+  it('ignores notifications belonging to anything else', async () => {
+    await handleNotificationClick('some-other-extension-thing');
+
+    expect(sidePanelOpen).not.toHaveBeenCalled();
+    expect(notificationsClear).not.toHaveBeenCalled();
+  });
+
+  it('opens the review on the Review button', async () => {
+    await handleNotificationButton(NOTIFICATION_ID, 0);
+
+    expect(sidePanelOpen).toHaveBeenCalledOnce();
+  });
+
+  it('only dismisses on Not today', async () => {
+    await handleNotificationButton(NOTIFICATION_ID, 1);
+
+    expect(sidePanelOpen).not.toHaveBeenCalled();
+    expect(notificationsClear).toHaveBeenCalledWith(NOTIFICATION_ID);
+  });
+
+  it('needs no bookkeeping to dismiss, since showing it already counted', async () => {
+    await readyToPrompt();
+    await maybePromptReview(NOW);
+
+    await handleNotificationButton(NOTIFICATION_ID, 1);
+    await maybePromptReview(NOW + 30 * 60_000);
+
+    expect(notificationsCreate).toHaveBeenCalledOnce();
+  });
+});
+
+describe('openReview', () => {
+  it('falls back to a tab when the side panel refuses to open', async () => {
+    // sidePanel.open() needs a user gesture and it is undocumented whether a
+    // notification click counts as one, so this path is a coin flip, not an
+    // error case.
+    sidePanelOpen.mockRejectedValueOnce(new Error('user gesture required'));
+
+    await openReview();
+
+    expect(tabsCreate).toHaveBeenCalledWith({
+      url: 'chrome-extension://abc/src/sidepanel/index.html',
+    });
+  });
+
+  it('does not also open a tab when the panel opened fine', async () => {
+    await openReview();
+
+    expect(tabsCreate).not.toHaveBeenCalled();
+  });
+
+  it('survives both routes failing', async () => {
+    sidePanelOpen.mockRejectedValueOnce(new Error('nope'));
+    tabsCreate.mockRejectedValueOnce(new Error('also nope'));
+
+    await expect(openReview()).resolves.toBeUndefined();
+  });
+});

@@ -6,16 +6,22 @@ import {
   removeSnoozedTab,
   forgetWindow,
   getLastActiveTabByWindow,
+  getPromptConfig,
+  getPromptState,
   getStalenessConfig,
   removeTabActivity,
   replaceTabActivity,
   replaceLastActiveTab,
   resetStalenessConfig,
+  savePromptConfig,
+  setLastPromptedAt,
+  setSessionStartedAt,
   saveStalenessConfig,
   setLastActiveTab,
   setTabActivity,
   type TabActivityMap,
 } from './storage';
+import { DEFAULT_PROMPT_CONFIG } from './prompt';
 import { DEFAULT_STALENESS_CONFIG, type SnoozedTab, type TabActivity } from './types';
 
 /** Minimal stand-in for chrome.storage.local, backed by a plain object. */
@@ -269,5 +275,59 @@ describe('the last-active tab per window', () => {
     await replaceLastActiveTab(42, 99);
 
     expect(await getLastActiveTabByWindow()).toEqual({ 1: 99, 2: 7 });
+  });
+});
+
+describe('the prompt config', () => {
+  it('reads as the defaults before anything is saved', async () => {
+    expect(await getPromptConfig()).toEqual(DEFAULT_PROMPT_CONFIG);
+  });
+
+  it('round-trips a change', async () => {
+    await savePromptConfig({ enabled: false });
+
+    expect(await getPromptConfig()).toEqual({ ...DEFAULT_PROMPT_CONFIG, enabled: false });
+  });
+
+  it('sanitizes a record it did not write', async () => {
+    store.promptConfig = { enabled: 'yes please', batchSize: 900 };
+
+    expect(await getPromptConfig()).toEqual({ enabled: true, batchSize: 25 });
+  });
+});
+
+describe('the prompt state', () => {
+  it('treats a profile that has never been prompted as due', async () => {
+    // Seeding this with "now" would suppress the very first prompt for a day.
+    expect((await getPromptState()).lastPromptedAt).toBe(0);
+  });
+
+  it('assumes the session just started when nothing is recorded', async () => {
+    // The grace period should apply rather than be skipped — erring toward
+    // silence, which is the safe direction for an interruption.
+    const before = Date.now();
+
+    const { sessionStartedAt } = await getPromptState();
+
+    expect(sessionStartedAt).toBeGreaterThanOrEqual(before);
+  });
+
+  it('round-trips the last prompt time', async () => {
+    await setLastPromptedAt(1_234);
+
+    expect((await getPromptState()).lastPromptedAt).toBe(1_234);
+  });
+
+  it('keeps the two timestamps independent', async () => {
+    await setLastPromptedAt(1_234);
+    await setSessionStartedAt(5_678);
+
+    expect(await getPromptState()).toEqual({ lastPromptedAt: 1_234, sessionStartedAt: 5_678 });
+  });
+
+  it('ignores a stored value that is not a number', async () => {
+    store.reviewPromptState = { lastPromptedAt: 'yesterday' };
+
+    expect((await getPromptState()).lastPromptedAt).toBe(0);
   });
 });

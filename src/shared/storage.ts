@@ -1,10 +1,13 @@
+import { sanitizePromptConfig, type PromptConfig } from './prompt';
 import { sanitizeStalenessConfig } from './staleness';
 import { DEFAULT_STALENESS_CONFIG, type SnoozedTab, type StalenessConfig, type TabActivity } from './types';
 
 const TAB_ACTIVITY_KEY = 'tabActivityMap';
 const SNOOZED_TABS_KEY = 'snoozedTabs';
 const LAST_ACTIVE_TAB_KEY = 'lastActiveTabByWindow';
+const PROMPT_STATE_KEY = 'reviewPromptState';
 export const STALENESS_CONFIG_KEY = 'stalenessConfig';
+export const PROMPT_CONFIG_KEY = 'promptConfig';
 
 async function readMap<T>(key: string): Promise<Record<string, T>> {
   const result = await chrome.storage.local.get(key);
@@ -179,6 +182,61 @@ export async function getStalenessConfig(): Promise<StalenessConfig> {
 export async function saveStalenessConfig(patch: Partial<StalenessConfig>): Promise<void> {
   const next = sanitizeStalenessConfig({ ...(await getStalenessConfig()), ...patch });
   await chrome.storage.local.set({ [STALENESS_CONFIG_KEY]: next });
+}
+
+/** The daily prompt's settings, sanitized on read like the weights. */
+export async function getPromptConfig(): Promise<PromptConfig> {
+  const result = await chrome.storage.local.get(PROMPT_CONFIG_KEY);
+  return sanitizePromptConfig(result[PROMPT_CONFIG_KEY]);
+}
+
+export async function savePromptConfig(patch: Partial<PromptConfig>): Promise<void> {
+  const next = sanitizePromptConfig({ ...(await getPromptConfig()), ...patch });
+  await chrome.storage.local.set({ [PROMPT_CONFIG_KEY]: next });
+}
+
+/**
+ * When the prompt was last shown, and when this browser session began.
+ *
+ * Stored rather than held in the worker for the usual reason — the worker is
+ * unloaded between alarms — but also because both have to outlive it by
+ * design: a daily interval means nothing if the record of the last prompt
+ * dies every thirty seconds.
+ */
+export interface PromptState {
+  lastPromptedAt: number;
+  sessionStartedAt: number;
+}
+
+export async function getPromptState(): Promise<PromptState> {
+  const result = await chrome.storage.local.get(PROMPT_STATE_KEY);
+  const stored = result[PROMPT_STATE_KEY] as Partial<PromptState> | undefined;
+
+  return {
+    // Zero, not the current time: a profile that has never been prompted is
+    // due for one, and seeding it with "now" would suppress the first prompt
+    // for a day for no reason.
+    lastPromptedAt: numberOr(stored?.lastPromptedAt, 0),
+    // Now, not zero: with no recorded session start, the grace period should
+    // apply rather than be skipped. Erring toward silence.
+    sessionStartedAt: numberOr(stored?.sessionStartedAt, Date.now()),
+  };
+}
+
+function numberOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+async function patchPromptState(patch: Partial<PromptState>): Promise<void> {
+  await chrome.storage.local.set({ [PROMPT_STATE_KEY]: { ...(await getPromptState()), ...patch } });
+}
+
+export async function setLastPromptedAt(at: number): Promise<void> {
+  await patchPromptState({ lastPromptedAt: at });
+}
+
+export async function setSessionStartedAt(at: number): Promise<void> {
+  await patchPromptState({ sessionStartedAt: at });
 }
 
 /**

@@ -1,4 +1,4 @@
-import { forgetWindow, removeTabActivity } from '../shared/storage';
+import { forgetWindow, removeTabActivity, setSessionStartedAt } from '../shared/storage';
 import {
   commitActivation,
   handleTabReplaced,
@@ -16,6 +16,7 @@ import { extractTabContent } from './extraction';
 import { archiveTab } from './archive';
 import { cancelSnooze, handleSnoozeAlarm, reconcileSnoozes, snoozeTab, wakeSnoozedTab } from './snooze';
 import { handleReviewAlarm, refreshBadge, scheduleReviewAlarm } from './badge';
+import { handleNotificationButton, handleNotificationClick } from './prompt';
 
 // A tab must stay active continuously for this long before it's recorded —
 // filters out incidental alt-tab flicker from counting as a real visit.
@@ -34,6 +35,9 @@ async function start(): Promise<void> {
   await initializeExistingTabs();
   await reconcileSnoozes();
   await scheduleReviewAlarm();
+  // Starts the prompt's grace period. This runs on browser startup and on
+  // install/update, which is exactly when the user has something else in mind.
+  await setSessionStartedAt(Date.now());
   // After reconciling, so the first count reflects anything that woke on the
   // way up rather than the state the browser was last closed in.
   await refreshBadge();
@@ -52,11 +56,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 // Keeps the badge honest between scheduled recounts: closing, keeping,
-// archiving and snoozing all land here as a write to the tracking map. Cheap
-// enough to run on each — a read and a tab-group query, with no write of its
-// own, so this cannot feed back into itself.
-// A weight change re-scores every tracked tab, so the badge can change without
-// a single tab having moved.
+// archiving and snoozing all land here as a write to the tracking map, and a
+// weight change re-scores every tracked tab, so the count can move without a
+// single tab having moved. Cheap enough to run on each — a read and a tab-group
+// query, with no write of its own, so this cannot feed back into itself.
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local' || !(changes.tabActivityMap || changes.stalenessConfig)) return;
   void refreshBadge();
@@ -91,6 +94,16 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   await removeTabActivity(tabId);
+});
+
+// The prompt is the one part of the extension the user did not initiate, so
+// both ways of answering it are wired: the body and the action buttons.
+chrome.notifications.onClicked.addListener((notificationId) => {
+  void handleNotificationClick(notificationId);
+});
+
+chrome.notifications.onButtonClicked.addListener((notificationId, buttonIndex) => {
+  void handleNotificationButton(notificationId, buttonIndex);
 });
 
 chrome.tabs.onReplaced.addListener(async (addedTabId, removedTabId) => {
