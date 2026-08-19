@@ -7,6 +7,7 @@ import {
   createRenderGuard,
   createRowState,
   renderEmptyState,
+  renderLoadingState,
 } from './components';
 import { DATE_TIME_FORMAT, formatArchivedAt } from './time';
 
@@ -155,6 +156,15 @@ function setEntries(next: ArchiveEntry[]): void {
 
 export async function renderArchive(container: HTMLElement): Promise<void> {
   const isCurrent = renderGuard.begin();
+
+  // This is the one view whose load is worth announcing: it reads every
+  // entry's full text out of IndexedDB and builds a search index over it,
+  // where the other views read one small object out of chrome.storage.
+  //
+  // Only when there is nothing on screen to keep, though. Re-entering the view
+  // leaves the previous rows up while the reread happens, and replacing them
+  // with "Loading…" for a frame reads as a glitch rather than as progress.
+  if (container.childElementCount === 0) renderLoadingState(container, 'Loading your archive…');
 
   let loaded: ArchiveEntry[];
   try {

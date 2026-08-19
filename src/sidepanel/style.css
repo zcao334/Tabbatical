@@ -28,7 +28,11 @@ h1 {
 .tab {
   font: inherit;
   font-size: 13px;
-  padding: 6px 12px;
+  /* Four tabs have to fit a panel the user can drag narrow, so they share the
+     width evenly and give up padding before anything wraps. */
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 4px;
   border: none;
   background: none;
   color: #5f6368;
@@ -161,13 +165,24 @@ h1 {
   border-radius: 2px;
 }
 
+/* Actions take the full width under the text rather than sitting beside it, so
+   the title gets the whole row to truncate in. Right-aligned: the buttons stay
+   where the eye left them as rows change height. */
+.row-actions {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .row-button {
   font: inherit;
   font-size: 12px;
   flex: none;
-  /* Narrow padding: two buttons at the default panel width leave the title
-     barely a third of the row. */
-  padding: 4px 8px;
+  /* Roomier than it used to be: the buttons no longer compete with the title
+     for the same line, so they can be comfortable to hit. */
+  padding: 4px 10px;
   border: 1px solid #dadce0;
   border-radius: 4px;
   background: #f8f9fa;
@@ -244,9 +259,18 @@ h1 {
   color: #c5221f;
 }
 
-.empty-state {
+/* An empty list is a normal state here, not a failure — every view starts out
+   this way. Given the same padded, dashed frame in all four so it reads as a
+   place waiting to be filled rather than as a list that failed to render. */
+.empty-state,
+.loading-state {
   font-size: 13px;
+  line-height: 1.5;
   color: #5f6368;
+  padding: 20px 16px;
+  text-align: center;
+  border: 1px dashed #dadce0;
+  border-radius: 6px;
 }
 
 /* Settings */

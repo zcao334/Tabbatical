@@ -6,6 +6,7 @@ import {
   createRenderGuard,
   createRowState,
   renderEmptyState,
+  renderLoadingState,
 } from './components';
 
 describe('createEntryRow', () => {
@@ -124,7 +125,7 @@ describe('createEntryRow', () => {
     });
 
     const children = Array.from(row.children).map((child) => child.className);
-    expect(children).toEqual(['row-info', 'row-form', 'row-button']);
+    expect(children).toEqual(['row-info', 'row-form', 'row-actions']);
   });
 
   it('renders a control as given, so it can own input state a row cannot', () => {
@@ -338,5 +339,79 @@ describe('createArmedRow', () => {
     armed.clear();
 
     expect(armed.detailFor(1)).toBeUndefined();
+  });
+});
+
+describe('the row action bar', () => {
+  it('gives the buttons a bar of their own, off the title’s line', () => {
+    // The title shares its line with nothing, so it has the full row width to
+    // truncate in — three buttons beside it left room for about eight
+    // characters.
+    const row = createEntryRow({
+      title: 'T',
+      meta: 'm',
+      actions: [
+        { label: 'Keep', onClick: () => {} },
+        { label: 'Snooze', onClick: () => {} },
+        { label: 'Archive', onClick: () => {} },
+      ],
+    });
+
+    const bar = row.querySelector('.row-actions');
+    expect(bar?.querySelectorAll('.row-button')).toHaveLength(3);
+    expect(row.querySelector('.row-info > .row-button')).toBeNull();
+  });
+
+  it('adds no bar when a row has no actions', () => {
+    const row = createEntryRow({ title: 'T', meta: 'm' });
+
+    expect(row.querySelector('.row-actions')).toBeNull();
+  });
+
+  it('keeps each action’s own class inside the bar', () => {
+    const row = createEntryRow({
+      title: 'T',
+      meta: 'm',
+      actions: [{ label: 'Delete?', className: 'row-button row-button--danger', onClick: () => {} }],
+    });
+
+    expect(row.querySelector('.row-actions .row-button--danger')).not.toBeNull();
+  });
+
+  it('still wires clicks through the bar', () => {
+    const onClick = vi.fn();
+    const row = createEntryRow({ title: 'T', meta: 'm', actions: [{ label: 'Keep', onClick }] });
+
+    row.querySelector<HTMLButtonElement>('.row-actions .row-button')?.click();
+
+    expect(onClick).toHaveBeenCalledOnce();
+  });
+});
+
+describe('renderLoadingState', () => {
+  it('replaces whatever the list was showing', () => {
+    const container = document.createElement('ul');
+    container.appendChild(createEntryRow({ title: 'Stale', meta: 'm' }));
+
+    renderLoadingState(container);
+
+    expect(container.querySelectorAll('.entry-row')).toHaveLength(0);
+    expect(container.querySelectorAll('.loading-state')).toHaveLength(1);
+  });
+
+  it('announces itself, so the wait is not silent', () => {
+    const container = document.createElement('ul');
+
+    renderLoadingState(container);
+
+    expect(container.querySelector('.loading-state')?.getAttribute('role')).toBe('status');
+  });
+
+  it('takes a message for the view that knows what is loading', () => {
+    const container = document.createElement('ul');
+
+    renderLoadingState(container, 'Loading your archive…');
+
+    expect(container.querySelector('.loading-state')?.textContent).toBe('Loading your archive…');
   });
 });

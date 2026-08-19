@@ -143,13 +143,25 @@ export function createEntryRow(options: RowOptions): HTMLLIElement {
 
   if (options.control) li.appendChild(options.control);
 
-  for (const action of options.actions ?? []) {
-    const button = document.createElement('button');
-    button.className = action.className ?? 'row-button';
-    button.textContent = action.label;
-    button.disabled = Boolean(action.disabled);
-    button.addEventListener('click', action.onClick);
-    li.appendChild(button);
+  // Actions go in a bar of their own rather than inline beside the text.
+  // Sharing the line meant three buttons at panel width left the title about a
+  // third of the row — "Chrome Extensions - Tabbatical" rendered as "Extensi…",
+  // which is not enough to decide anything by. The row is a line taller for it.
+  const actions = options.actions ?? [];
+  if (actions.length > 0) {
+    const bar = document.createElement('div');
+    bar.className = 'row-actions';
+
+    for (const action of actions) {
+      const button = document.createElement('button');
+      button.className = action.className ?? 'row-button';
+      button.textContent = action.label;
+      button.disabled = Boolean(action.disabled);
+      button.addEventListener('click', action.onClick);
+      bar.appendChild(button);
+    }
+
+    li.appendChild(bar);
   }
 
   if (options.error) {
@@ -169,6 +181,24 @@ export function renderEmptyState(container: HTMLElement, message: string): void 
   empty.className = 'empty-state';
   empty.textContent = message;
   container.appendChild(empty);
+}
+
+/**
+ * Says a list is still being read, for the one case where that takes long
+ * enough to see.
+ *
+ * Used only on a genuine first load. A view that re-renders from data it
+ * already holds would flash this for a frame or two, which reads as a glitch
+ * rather than as progress — worse than the brief stillness it replaces.
+ */
+export function renderLoadingState(container: HTMLElement, message = 'Loading…'): void {
+  container.innerHTML = '';
+  const loading = document.createElement('li');
+  loading.className = 'loading-state';
+  // Announced when it appears, so the wait isn't silent for a screen reader.
+  loading.setAttribute('role', 'status');
+  loading.textContent = message;
+  container.appendChild(loading);
 }
 
 export interface RowActionOptions<P = unknown> {
