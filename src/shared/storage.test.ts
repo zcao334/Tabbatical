@@ -4,11 +4,15 @@ import {
   getSnoozedTabs,
   getTabActivityMap,
   removeSnoozedTab,
+  forgetWindow,
+  getLastActiveTabByWindow,
   getStalenessConfig,
   removeTabActivity,
   replaceTabActivity,
+  replaceLastActiveTab,
   resetStalenessConfig,
   saveStalenessConfig,
+  setLastActiveTab,
   setTabActivity,
   type TabActivityMap,
 } from './storage';
@@ -212,5 +216,58 @@ describe('the staleness config', () => {
     await resetStalenessConfig();
 
     expect(store.stalenessConfig).toEqual(DEFAULT_STALENESS_CONFIG);
+  });
+});
+
+describe('the last-active tab per window', () => {
+  it('starts empty', async () => {
+    expect(await getLastActiveTabByWindow()).toEqual({});
+  });
+
+  it('records a tab against its window', async () => {
+    await setLastActiveTab(1, 42);
+
+    expect(await getLastActiveTabByWindow()).toEqual({ 1: 42 });
+  });
+
+  it('keeps windows independent', async () => {
+    await setLastActiveTab(1, 42);
+    await setLastActiveTab(2, 7);
+
+    expect(await getLastActiveTabByWindow()).toEqual({ 1: 42, 2: 7 });
+  });
+
+  it('overwrites the window’s previous tab rather than accumulating', async () => {
+    await setLastActiveTab(1, 42);
+    await setLastActiveTab(1, 43);
+
+    expect(await getLastActiveTabByWindow()).toEqual({ 1: 43 });
+  });
+
+  it('drops a closed window', async () => {
+    await setLastActiveTab(1, 42);
+    await setLastActiveTab(2, 7);
+
+    await forgetWindow(1);
+
+    expect(await getLastActiveTabByWindow()).toEqual({ 2: 7 });
+  });
+
+  it('follows a discarded tab onto its replacement id', async () => {
+    await setLastActiveTab(1, 42);
+    await setLastActiveTab(2, 42);
+
+    await replaceLastActiveTab(42, 99);
+
+    expect(await getLastActiveTabByWindow()).toEqual({ 1: 99, 2: 99 });
+  });
+
+  it('leaves other windows alone when replacing an id', async () => {
+    await setLastActiveTab(1, 42);
+    await setLastActiveTab(2, 7);
+
+    await replaceLastActiveTab(42, 99);
+
+    expect(await getLastActiveTabByWindow()).toEqual({ 1: 99, 2: 7 });
   });
 });

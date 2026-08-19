@@ -3,6 +3,7 @@ import { DEFAULT_STALENESS_CONFIG, type SnoozedTab, type StalenessConfig, type T
 
 const TAB_ACTIVITY_KEY = 'tabActivityMap';
 const SNOOZED_TABS_KEY = 'snoozedTabs';
+const LAST_ACTIVE_TAB_KEY = 'lastActiveTabByWindow';
 export const STALENESS_CONFIG_KEY = 'stalenessConfig';
 
 async function readMap<T>(key: string): Promise<Record<string, T>> {
@@ -103,6 +104,55 @@ export async function addSnoozedTab(entry: SnoozedTab): Promise<void> {
 export async function removeSnoozedTab(id: string): Promise<void> {
   await updateMap<SnoozedTab>(SNOOZED_TABS_KEY, (map) => {
     delete map[id];
+  });
+}
+
+/**
+ * The tab each window most recently settled on, keyed by window id.
+ *
+ * Stored rather than held in memory because the thing that reads it is a
+ * service worker, and an MV3 worker is unloaded after about thirty seconds
+ * idle. A Map here survived only as long as the worker did: after every
+ * unload the next activation saw no previous tab, counted as a first visit
+ * rather than a revisit, and the count stopped moving.
+ *
+ * Per-window because each window has its own focus history — switching
+ * windows is not a revisit within either of them.
+ */
+export type LastActiveTabMap = Record<number, number>;
+
+export async function getLastActiveTabByWindow(): Promise<LastActiveTabMap> {
+  return (await readMap<number>(LAST_ACTIVE_TAB_KEY)) as LastActiveTabMap;
+}
+
+export async function setLastActiveTab(windowId: number, tabId: number): Promise<void> {
+  await updateMap<number>(LAST_ACTIVE_TAB_KEY, (map) => {
+    map[windowId] = tabId;
+  });
+}
+
+/** Drops a closed window, so the record doesn't accumulate dead window ids. */
+export async function forgetWindow(windowId: number): Promise<void> {
+  await updateMap<number>(LAST_ACTIVE_TAB_KEY, (map) => {
+    delete map[windowId];
+  });
+}
+
+/**
+ * Follow a discarded tab onto its replacement id.
+ *
+ * Without this the window's last-active tab points at an id that no longer
+ * exists, so returning to that same tab reads as a switch and counts a revisit
+ * the user never made.
+ */
+export async function replaceLastActiveTab(
+  removedTabId: number,
+  addedTabId: number,
+): Promise<void> {
+  await updateMap<number>(LAST_ACTIVE_TAB_KEY, (map) => {
+    for (const [windowId, tabId] of Object.entries(map)) {
+      if (tabId === removedTabId) map[Number(windowId)] = addedTabId;
+    }
   });
 }
 

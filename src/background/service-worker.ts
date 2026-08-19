@@ -1,10 +1,10 @@
-import type { TabActivity } from '../shared/types';
+import { forgetWindow, removeTabActivity } from '../shared/storage';
 import {
-  getTabActivityMap,
-  removeTabActivity,
-  replaceTabActivity,
-  setTabActivity,
-} from '../shared/storage';
+  commitActivation,
+  handleTabReplaced,
+  initializeExistingTabs,
+  trackTab,
+} from './activity';
 import {
   isArchiveTabRequest,
   isExtractTabRequest,
@@ -21,74 +21,10 @@ import { handleReviewAlarm, refreshBadge, scheduleReviewAlarm } from './badge';
 // filters out incidental alt-tab flicker from counting as a real visit.
 const ACTIVE_DWELL_MS = 7_000;
 
-// Tracks each window's most-recently-*committed* tab (i.e. one that cleared
-// the dwell threshold) so a revisit only counts against confirmed activity,
-// not raw activation events.
-const lastActiveTabIdByWindow = new Map<number, number>();
+// Pending dwell timers, one per window. In memory on purpose, unlike the
+// last-active tab this feeds: a timer is meaningless once the worker unloads,
+// since the activation it was waiting to confirm is over.
 const pendingActivationTimers = new Map<number, ReturnType<typeof setTimeout>>();
-
-function toActivity(tab: chrome.tabs.Tab, previous?: TabActivity): TabActivity {
-  return {
-    tabId: tab.id!,
-    url: tab.url ?? previous?.url ?? '',
-    title: tab.title ?? previous?.title ?? '',
-    lastActiveAt: previous?.lastActiveAt ?? Date.now(),
-    revisitCount: previous?.revisitCount ?? 0,
-    groupId: tab.groupId != null && tab.groupId >= 0 ? tab.groupId : null,
-    pinned: tab.pinned ?? false,
-  };
-}
-
-async function trackTab(tab: chrome.tabs.Tab, { createIfMissing = true } = {}): Promise<void> {
-  if (tab.id == null) return;
-  const map = await getTabActivityMap();
-  const existing = map[tab.id];
-  if (!existing && !createIfMissing) return;
-  await setTabActivity(toActivity(tab, existing));
-}
-
-async function initializeExistingTabs(): Promise<void> {
-  const tabs = await chrome.tabs.query({});
-  const currentTabIds = new Set(tabs.map((tab) => tab.id).filter((id): id is number => id != null));
-
-  // A tab closed while Chrome shuts down abruptly never fires onRemoved, so
-  // reconcile storage against reality on every install/startup instead of
-  // only ever adding to it.
-  const map = await getTabActivityMap();
-  for (const tabIdKey of Object.keys(map)) {
-    const tabId = Number(tabIdKey);
-    if (!currentTabIds.has(tabId)) {
-      await removeTabActivity(tabId);
-    }
-  }
-
-  for (const tab of tabs) {
-    await trackTab(tab);
-  }
-}
-
-async function commitActivation(tabId: number, windowId: number): Promise<void> {
-  let tab: chrome.tabs.Tab;
-  try {
-    tab = await chrome.tabs.get(tabId);
-  } catch {
-    return; // tab was closed before it dwelled long enough to commit
-  }
-  if (!tab.active) return; // user already moved on again
-
-  const previousTabId = lastActiveTabIdByWindow.get(windowId);
-  lastActiveTabIdByWindow.set(windowId, tabId);
-
-  const map = await getTabActivityMap();
-  const existing = map[tabId];
-  const isRevisit = previousTabId !== undefined && previousTabId !== tabId && existing !== undefined;
-
-  const activity = toActivity(tab, existing);
-  activity.lastActiveAt = Date.now();
-  if (isRevisit) activity.revisitCount += 1;
-
-  await setTabActivity(activity);
-}
 
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
@@ -157,15 +93,15 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   await removeTabActivity(tabId);
 });
 
-// Discarding a tab swaps it for a new one with a different id, and fires this
-// instead of onRemoved. These are precisely the idle tabs the digest surfaces,
-// so without migrating the id, archiving the tabs most likely to be archived
-// would fail on a stale id.
 chrome.tabs.onReplaced.addListener(async (addedTabId, removedTabId) => {
-  lastActiveTabIdByWindow.forEach((tabId, windowId) => {
-    if (tabId === removedTabId) lastActiveTabIdByWindow.set(windowId, addedTabId);
-  });
-  await replaceTabActivity(removedTabId, addedTabId);
+  await handleTabReplaced(addedTabId, removedTabId);
+});
+
+// A closed window's last-active tab is never consulted again, so drop it
+// rather than let dead window ids accumulate.
+chrome.windows.onRemoved.addListener(async (windowId) => {
+  pendingActivationTimers.delete(windowId);
+  await forgetWindow(windowId);
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
