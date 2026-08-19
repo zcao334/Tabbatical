@@ -1,51 +1,91 @@
 import { renderDigest } from './digest';
 import { initArchiveSearch, renderArchive } from './archive';
+import { renderSnoozed } from './snoozed';
 
-const digestList = document.getElementById('digest-list');
-const archiveList = document.getElementById('archive-list');
-const archiveSearch = document.getElementById('archive-search');
-const digestTab = document.getElementById('tab-digest');
-const archiveTab = document.getElementById('tab-archive');
-const digestView = document.getElementById('view-digest');
-const archiveView = document.getElementById('view-archive');
+type ViewName = 'digest' | 'snoozed' | 'archive';
 
-type ViewName = 'digest' | 'archive';
+interface View {
+  tab: HTMLElement | null;
+  section: HTMLElement | null;
+  list: HTMLElement | null;
+  render: (container: HTMLElement) => void | Promise<void>;
+}
+
+const views: Record<ViewName, View> = {
+  digest: {
+    tab: document.getElementById('tab-digest'),
+    section: document.getElementById('view-digest'),
+    list: document.getElementById('digest-list'),
+    render: renderDigest,
+  },
+  snoozed: {
+    tab: document.getElementById('tab-snoozed'),
+    section: document.getElementById('view-snoozed'),
+    list: document.getElementById('snoozed-list'),
+    render: renderSnoozed,
+  },
+  archive: {
+    tab: document.getElementById('tab-archive'),
+    section: document.getElementById('view-archive'),
+    list: document.getElementById('archive-list'),
+    render: renderArchive,
+  },
+};
+
+const VIEW_NAMES = Object.keys(views) as ViewName[];
+
 let activeView: ViewName = 'digest';
 
-function showView(view: ViewName): void {
-  activeView = view;
-  const showingDigest = view === 'digest';
-
-  digestView?.toggleAttribute('hidden', !showingDigest);
-  archiveView?.toggleAttribute('hidden', showingDigest);
-  digestTab?.setAttribute('aria-selected', String(showingDigest));
-  archiveTab?.setAttribute('aria-selected', String(!showingDigest));
-  digestTab?.classList.toggle('is-active', showingDigest);
-  archiveTab?.classList.toggle('is-active', !showingDigest);
-
-  // The archive has no change notifications of its own — IndexedDB writes
-  // happen in the service worker and don't broadcast — so it's refreshed on
-  // entry rather than kept live. Anything archived while the digest was
-  // showing appears as soon as the user switches over.
-  if (!showingDigest && archiveList) void renderArchive(archiveList);
+function refresh(name: ViewName): void {
+  const { list, render } = views[name];
+  if (list) void render(list);
 }
 
-digestTab?.addEventListener('click', () => showView('digest'));
-archiveTab?.addEventListener('click', () => showView('archive'));
+function showView(name: ViewName): void {
+  activeView = name;
 
-if (archiveList && archiveSearch instanceof HTMLInputElement) {
-  initArchiveSearch(archiveSearch, archiveList);
+  for (const candidate of VIEW_NAMES) {
+    const view = views[candidate];
+    const selected = candidate === name;
+    view.section?.toggleAttribute('hidden', !selected);
+    view.tab?.setAttribute('aria-selected', String(selected));
+    view.tab?.classList.toggle('is-active', selected);
+  }
+
+  // Neither the archive nor the snoozed list is kept live off its own store —
+  // the archive's writes happen in IndexedDB and broadcast nothing, and a
+  // snooze that woke on its own only shows up on a re-read. Both refresh on
+  // entry, so anything that changed while another view was showing appears as
+  // soon as the user switches over.
+  if (name !== 'digest') refresh(name);
 }
 
-if (digestList) {
-  void renderDigest(digestList);
+for (const name of VIEW_NAMES) {
+  views[name].tab?.addEventListener('click', () => showView(name));
+}
+
+const archiveSearch = document.getElementById('archive-search');
+if (views.archive.list && archiveSearch instanceof HTMLInputElement) {
+  initArchiveSearch(archiveSearch, views.archive.list);
+}
+
+if (views.digest.list) {
+  refresh('digest');
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== 'local' || !changes.tabActivityMap) return;
-    void renderDigest(digestList);
+    if (areaName !== 'local') return;
 
-    // An archive both writes an entry and closes the tab, so a tab-map change
-    // is the one signal the side panel gets that the archive may have grown.
-    if (activeView === 'archive' && archiveList) void renderArchive(archiveList);
+    if (changes.tabActivityMap) {
+      refresh('digest');
+
+      // An archive both writes an entry and closes the tab, so a tab-map
+      // change is the one signal the panel gets that the archive may have
+      // grown.
+      if (activeView === 'archive') refresh('archive');
+    }
+
+    // Covers a tab waking on its own with the list open, which is otherwise
+    // the one change this view would show stale.
+    if (changes.snoozedTabs && activeView === 'snoozed') refresh('snoozed');
   });
 }

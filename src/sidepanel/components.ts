@@ -36,6 +36,13 @@ export interface RowOptions {
   snippet?: Snippet;
   /** Error text shown under the row, e.g. a failed archive. */
   error?: string;
+  /**
+   * Extra element between the text and the buttons — the snooze duration field
+   * is the one user of this. Passed in already built rather than described
+   * declaratively, because a control that owns its own input state is exactly
+   * the thing a rebuilt-from-options row can't describe.
+   */
+  control?: HTMLElement;
   actions?: RowAction[];
 }
 
@@ -134,6 +141,8 @@ export function createEntryRow(options: RowOptions): HTMLLIElement {
 
   li.appendChild(info);
 
+  if (options.control) li.appendChild(options.control);
+
   for (const action of options.actions ?? []) {
     const button = document.createElement('button');
     button.className = action.className ?? 'row-button';
@@ -162,9 +171,15 @@ export function renderEmptyState(container: HTMLElement, message: string): void 
   container.appendChild(empty);
 }
 
-export interface RowActionOptions {
+export interface RowActionOptions<P = unknown> {
   /** Shown on the row when the action fails. */
   errorMessage: string;
+  /**
+   * Describes the operation while it runs, readable back via `pendingFor`.
+   * A row can host more than one action, and "Archiving…" on a row that is in
+   * fact snoozing is worse than no label at all.
+   */
+  pending?: P;
   /** Rebuilds the list so the row reflects the state change. */
   render: () => void | Promise<void>;
 }
@@ -180,29 +195,34 @@ export interface RowActionOptions {
  * Keyed generically because the digest identifies rows by tab id and the
  * archive by entry id.
  */
-export interface RowState<K> {
+export interface RowState<K, P = unknown> {
   isPending(key: K): boolean;
+  /** Which operation is in flight, from the `pending` given to `run`. */
+  pendingFor(key: K): P | undefined;
   errorFor(key: K): string | undefined;
   /**
    * Marks the row pending, runs the action, then settles — re-rendering at both
    * ends. Re-entry for a key already in flight is ignored, so a double click
    * can't start the same operation twice.
    */
-  run(key: K, action: () => Promise<void>, options: RowActionOptions): Promise<void>;
+  run(key: K, action: () => Promise<void>, options: RowActionOptions<P>): Promise<void>;
 }
 
-export function createRowState<K>(): RowState<K> {
-  const pending = new Set<K>();
+export function createRowState<K, P = unknown>(): RowState<K, P> {
+  // A map rather than a set plus a parallel map: membership and the label
+  // settle together, so they can't disagree about whether a row is busy.
+  const pending = new Map<K, P | undefined>();
   const errors = new Map<K, string>();
 
   return {
     isPending: (key) => pending.has(key),
+    pendingFor: (key) => pending.get(key),
     errorFor: (key) => errors.get(key),
 
-    async run(key, action, { errorMessage, render }) {
+    async run(key, action, { errorMessage, pending: label, render }) {
       if (pending.has(key)) return;
 
-      pending.add(key);
+      pending.set(key, label);
       // A retry starts clean rather than showing the previous failure beside a
       // spinner.
       errors.delete(key);
@@ -218,6 +238,45 @@ export function createRowState<K>(): RowState<K> {
         pending.delete(key);
         await render();
       }
+    },
+  };
+}
+
+/**
+ * Tracks the one row currently showing a follow-up choice.
+ *
+ * Two actions need this: Delete arms a confirmation, and Snooze opens a
+ * duration picker. Both replace a row's buttons in place, both must collapse
+ * when another row opens one, and neither can keep that state in the DOM for
+ * the same reason `RowState` can't — the next render rebuilds the row.
+ *
+ * `detail` distinguishes stages within one row's choice (the snooze picker's
+ * presets versus its custom field); a caller that only needs armed/not-armed
+ * ignores it.
+ */
+export interface ArmedRow<K, D = undefined> {
+  isArmed(key: K): boolean;
+  detailFor(key: K): D | undefined;
+  arm(key: K, detail?: D): void;
+  clear(): void;
+}
+
+export function createArmedRow<K, D = undefined>(): ArmedRow<K, D> {
+  let armedKey: K | undefined;
+  let armedDetail: D | undefined;
+
+  return {
+    isArmed: (key) => armedKey !== undefined && armedKey === key,
+    detailFor: (key) => (armedKey !== undefined && armedKey === key ? armedDetail : undefined),
+    arm(key, detail) {
+      // Only ever one: arming elsewhere moves the choice rather than leaving
+      // two rows both waiting on the user.
+      armedKey = key;
+      armedDetail = detail;
+    },
+    clear() {
+      armedKey = undefined;
+      armedDetail = undefined;
     },
   };
 }

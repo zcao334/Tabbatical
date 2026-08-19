@@ -1,5 +1,15 @@
-/** Shared by staleness scoring and both views' relative-time labels. */
-export const MS_PER_DAY = 1000 * 60 * 60 * 24;
+/**
+ * The units everything here reasons in: staleness scoring, the snooze parser
+ * and every relative-time label in the panel.
+ *
+ * Together rather than per-module because the snooze parser and the countdown
+ * that reads its result have to agree on what a week is, and two identical
+ * private copies agree only until one of them is edited.
+ */
+export const MS_PER_MINUTE = 60_000;
+export const MS_PER_HOUR = 60 * MS_PER_MINUTE;
+export const MS_PER_DAY = 24 * MS_PER_HOUR;
+export const MS_PER_WEEK = 7 * MS_PER_DAY;
 
 export interface TabActivity {
   tabId: number;
@@ -59,6 +69,42 @@ export interface Snippet {
   text: string;
   matchStart: number;
   matchLength: number;
+}
+
+/**
+ * A tab closed on purpose with a scheduled return.
+ *
+ * Unlike an archive entry this holds no page content — a snoozed tab is coming
+ * back as a live page, so there's nothing to capture. It does keep enough to
+ * reopen and to describe the tab, since the tab itself is gone the moment the
+ * snooze starts and this record is the only thing left of it.
+ *
+ * `id` is generated rather than reusing the tab id: tab ids are recycled by
+ * Chrome, and this record has to outlive the tab, the window, and often the
+ * browser session.
+ */
+export interface SnoozedTab {
+  id: string;
+  url: string;
+  title: string;
+  faviconUrl?: string;
+  snoozedAt: number;
+  wakeAt: number;
+  /**
+   * The tab's idle clock at the moment it was snoozed, carried across the
+   * snooze and restored on wake.
+   *
+   * Snoozing is a deferral, not a visit — a tab that was already stale comes
+   * back stale rather than resetting to the bottom of the digest. Revisits
+   * come along for the same reason in the other direction: staleness
+   * subtracts them, so a tab you use constantly returns correctly ranked
+   * *below* one you never touch.
+   *
+   * Optional because entries written before this landed don't carry them;
+   * those fall back to the snooze time and a zero count.
+   */
+  lastActiveAt?: number;
+  revisitCount?: number;
 }
 
 /**

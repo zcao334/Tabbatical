@@ -1,80 +1,166 @@
-import { computeStaleness } from '../shared/staleness';
-import { getTabActivityMap, patchTabActivity } from '../shared/storage';
-import { MS_PER_DAY, type TabActivity } from '../shared/types';
+import { scoreTrackedTabs, type ScoredTab } from '../shared/review';
+import { patchTabActivity } from '../shared/storage';
+import type { TabActivity } from '../shared/types';
+import { formatDaysIdle } from './time';
 import { isInjectableUrl, requestHostPermission } from '../shared/permissions';
 import {
   ARCHIVE_TAB_REQUEST,
+  SNOOZE_TAB_REQUEST,
   type ArchiveTabRequest,
   type ArchiveTabResponse,
+  type SnoozeTabRequest,
+  type SnoozeTabResponse,
 } from '../shared/messages';
-import { createEntryRow, createRenderGuard, createRowState, renderEmptyState } from './components';
+import { SNOOZE_PRESETS, parseDuration } from '../shared/snooze';
+import {
+  createArmedRow,
+  createEntryRow,
+  createRenderGuard,
+  createRowState,
+  renderEmptyState,
+  type RowAction,
+  type RowOptions,
+} from './components';
 
-interface DigestEntry {
-  activity: TabActivity;
-  staleness: number;
+/** What a row is doing while it's busy. Shown on the row, so it reads as a label. */
+type PendingVerb = 'Archiving…' | 'Snoozing…';
+
+/** Tracks which tabs have an action in flight, which one, and which last failed. */
+const rowState = createRowState<number, PendingVerb>();
+
+/**
+ * Which row is showing the snooze picker, and how far into it.
+ *
+ * Snooze needs a duration before it can do anything, and a side panel has no
+ * room for a menu that floats. The picker takes over the row's buttons
+ * instead: `presets` offers the one-click durations, `custom` swaps in a field.
+ */
+type SnoozeStage = 'presets' | 'custom';
+const snoozeMenu = createArmedRow<number, SnoozeStage>();
+
+/**
+ * The custom-duration field.
+ *
+ * A form rather than a bare input so Enter submits for free, which is the only
+ * way this gets used once the user knows it exists.
+ */
+function createDurationField(onSubmit: (durationMs: number) => void): HTMLElement {
+  const form = document.createElement('form');
+  form.className = 'row-form';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'row-input';
+  input.placeholder = '30m, 2h, 3d, 1w';
+  input.setAttribute('aria-label', 'Snooze duration');
+  input.autocomplete = 'off';
+
+  const submit = document.createElement('button');
+  submit.type = 'submit';
+  submit.className = 'row-button';
+  submit.textContent = 'Snooze';
+
+  const hint = document.createElement('div');
+  hint.className = 'row-hint';
+
+  form.append(input, submit, hint);
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+
+    const durationMs = parseDuration(input.value);
+    if (durationMs === null) {
+      // Reported in place, deliberately without a re-render: rebuilding the
+      // row would throw away what the user typed along with it.
+      hint.textContent = 'Try 30m, 2h, 3d or 1w — from 1 minute up to a year.';
+      input.focus();
+      return;
+    }
+
+    onSubmit(durationMs);
+  });
+
+  // The field exists only because the user just asked for it, so it takes the
+  // caret. Deferred because it isn't in the document until this row is.
+  setTimeout(() => input.focus(), 0);
+
+  return form;
 }
 
-async function getActiveGroupIds(): Promise<Set<number>> {
-  const groups = await chrome.tabGroups.query({ collapsed: false });
-  return new Set(groups.map((group) => group.id));
+/**
+ * Ordered most useful first, because this line truncates from the right at
+ * panel width: how long it's been idle is what the user is deciding on, and
+ * the score is the arithmetic behind it. Whatever gets cut is on the tooltip.
+ */
+function metaFor(entry: ScoredTab): string {
+  return [
+    formatDaysIdle(entry.activity.lastActiveAt),
+    `revisited ${entry.activity.revisitCount}x`,
+    `score ${entry.staleness.toFixed(0)}`,
+  ].join(' · ');
 }
 
-async function buildDigest(): Promise<DigestEntry[]> {
-  const [map, activeGroupIds] = await Promise.all([getTabActivityMap(), getActiveGroupIds()]);
-  const now = Date.now();
-
-  return Object.values(map)
-    .map((activity) => ({
-      activity,
-      staleness: computeStaleness(
-        {
-          lastActiveAt: activity.lastActiveAt,
-          revisitCount: activity.revisitCount,
-          pinned: activity.pinned,
-          isInActiveGroup: activity.groupId != null && activeGroupIds.has(activity.groupId),
-        },
-        now,
-      ),
-    }))
-    .sort((a, b) => b.staleness - a.staleness);
-}
-
-function formatDaysIdle(lastActiveAt: number): string {
-  const days = (Date.now() - lastActiveAt) / MS_PER_DAY;
-  if (days < 1) return 'active today';
-  return `${Math.floor(days)}d idle`;
+function cancelAction(onClick: () => void): RowAction {
+  return { label: 'Cancel', className: 'row-button row-button--quiet', onClick };
 }
 
 interface EntryActions {
   onKeep: (tabId: number) => void;
   onArchive: (activity: TabActivity) => void;
+  onSnooze: (activity: TabActivity, durationMs: number) => void;
+  onOpenSnooze: (tabId: number, stage: SnoozeStage) => void;
+  onCloseSnooze: () => void;
 }
 
-function renderEntry(entry: DigestEntry, actions: EntryActions): HTMLLIElement {
+function renderEntry(entry: ScoredTab, actions: EntryActions): HTMLLIElement {
   const { activity } = entry;
-  const archiving = rowState.isPending(activity.tabId);
+  const pending = rowState.pendingFor(activity.tabId);
+  const stage = snoozeMenu.detailFor(activity.tabId);
 
-  return createEntryRow({
+  const options: RowOptions = {
     title: activity.title || activity.url,
-    meta: [
-      formatDaysIdle(activity.lastActiveAt),
-      `revisited ${activity.revisitCount}x`,
-      `score ${entry.staleness.toFixed(0)}`,
-    ],
+    // Dropped while the picker is open. Four buttons leave the staleness line
+    // no room at panel width, and the question on screen is "how long?", not
+    // "how stale?" — the numbers are what the user already read to get here.
+    // One string, not segments. The segmented form protects the *trailing*
+    // part, which is what the archive needed — here the leading part is the
+    // one worth reading, and holding the tail fixed clipped digits off the
+    // score instead, turning 50 into a perfectly plausible 5.
+    meta: stage ? '' : metaFor(entry),
     error: rowState.errorFor(activity.tabId),
-    actions: [
-      { label: 'Keep', onClick: () => actions.onKeep(activity.tabId) },
-      {
-        label: archiving ? 'Archiving…' : 'Archive',
-        disabled: archiving,
-        onClick: () => actions.onArchive(activity),
-      },
-    ],
-  });
-}
+  };
 
-/** Tracks which tabs are mid-archive and which last failed. */
-const rowState = createRowState<number>();
+  if (rowState.isPending(activity.tabId)) {
+    // Nothing to click mid-operation: every action on this row acts on a tab
+    // that's about to close.
+    options.actions = [{ label: pending ?? 'Working…', disabled: true, onClick: () => {} }];
+  } else if (stage === 'custom') {
+    options.control = createDurationField((durationMs) => actions.onSnooze(activity, durationMs));
+    options.actions = [cancelAction(actions.onCloseSnooze)];
+  } else if (stage === 'presets') {
+    options.actions = [
+      ...SNOOZE_PRESETS.map((preset) => ({
+        label: preset.label,
+        onClick: () => actions.onSnooze(activity, preset.ms),
+      })),
+      { label: 'Custom', onClick: () => actions.onOpenSnooze(activity.tabId, 'custom') },
+      cancelAction(actions.onCloseSnooze),
+    ];
+  } else {
+    options.actions = [
+      { label: 'Keep', onClick: () => actions.onKeep(activity.tabId) },
+      { label: 'Snooze', onClick: () => actions.onOpenSnooze(activity.tabId, 'presets') },
+      { label: 'Archive', onClick: () => actions.onArchive(activity) },
+    ];
+  }
+
+  const row = createEntryRow(options);
+  // The row truncates both the title and the staleness line at panel width, so
+  // the tooltip is where the untruncated version lives — same as the archive
+  // and snoozed views.
+  row.title = `${activity.url}\n${metaFor(entry)}`;
+  return row;
+}
 
 async function archiveTab(activity: TabActivity, container: HTMLElement): Promise<void> {
   if (rowState.isPending(activity.tabId)) return;
@@ -103,7 +189,35 @@ async function archiveTab(activity: TabActivity, container: HTMLElement): Promis
         throw new Error(`Archive request returned ${response?.status ?? 'no response'}`);
       }
     },
-    { errorMessage: "Couldn't archive", render: () => renderDigest(container) },
+    { errorMessage: "Couldn't archive", pending: 'Archiving…', render: () => renderDigest(container) },
+  );
+}
+
+/**
+ * Hands the tab to the service worker, which stores it, sets the alarm and
+ * closes it. No host permission is involved — snoozing reads nothing off the
+ * page, it only needs the URL the tracking map already has.
+ */
+async function snoozeTab(
+  activity: TabActivity,
+  durationMs: number,
+  container: HTMLElement,
+): Promise<void> {
+  snoozeMenu.clear();
+
+  await rowState.run(
+    activity.tabId,
+    async () => {
+      const response = await chrome.runtime.sendMessage<SnoozeTabRequest, SnoozeTabResponse>({
+        type: SNOOZE_TAB_REQUEST,
+        tabId: activity.tabId,
+        durationMs,
+      });
+      if (!response || response.status === 'failed') {
+        throw new Error(`Snooze request returned ${response?.status ?? 'no response'}`);
+      }
+    },
+    { errorMessage: "Couldn't snooze", pending: 'Snoozing…', render: () => renderDigest(container) },
   );
 }
 
@@ -113,8 +227,13 @@ const renderGuard = createRenderGuard();
 
 export async function renderDigest(container: HTMLElement): Promise<void> {
   const isCurrent = renderGuard.begin();
-  const entries = await buildDigest();
+  const entries = await scoreTrackedTabs();
   if (!isCurrent()) return;
+
+  // A tab closed while its picker was open would leave the picker armed on a
+  // dead tab id — and Chrome reuses tab ids, so it would eventually reopen on
+  // an unrelated row.
+  if (!entries.some((entry) => snoozeMenu.isArmed(entry.activity.tabId))) snoozeMenu.clear();
 
   if (entries.length === 0) {
     renderEmptyState(container, 'No tracked tabs yet.');
@@ -131,6 +250,15 @@ export async function renderDigest(container: HTMLElement): Promise<void> {
           await renderDigest(container);
         },
         onArchive: (activity) => void archiveTab(activity, container),
+        onSnooze: (activity, durationMs) => void snoozeTab(activity, durationMs, container),
+        onOpenSnooze: (tabId, stage) => {
+          snoozeMenu.arm(tabId, stage);
+          void renderDigest(container);
+        },
+        onCloseSnooze: () => {
+          snoozeMenu.clear();
+          void renderDigest(container);
+        },
       }),
     );
   }

@@ -78,3 +78,62 @@ export function isArchiveTabRequest(value: unknown): value is ArchiveTabRequest 
     typeof (value as { tabId?: unknown }).tabId === 'number'
   );
 }
+
+export const SNOOZE_TAB_REQUEST = 'tab-review:snooze-tab';
+
+/**
+ * Asks the background to close a tab and schedule its return.
+ *
+ * Handled in the service worker rather than the side panel because the alarm
+ * and the stored record have to be written even if the panel closes the
+ * instant the button is clicked — and because the panel has no way to be
+ * running when the alarm eventually fires.
+ */
+export interface SnoozeTabRequest {
+  type: typeof SNOOZE_TAB_REQUEST;
+  tabId: number;
+  durationMs: number;
+}
+
+export type SnoozeTabResponse =
+  /** Recorded, scheduled and closed. `wakeAt` is the absolute return time. */
+  | { status: 'snoozed'; wakeAt: number }
+  | { status: 'failed' };
+
+export const SNOOZE_ACTION_REQUEST = 'tab-review:snooze-action';
+
+/**
+ * Acts on a snooze that is already scheduled: bring it back now, or drop it.
+ *
+ * Routed through the background rather than done in the panel so that waking
+ * early runs the same code as waking on the alarm, and so that clearing the
+ * alarm stays with the worker that owns it.
+ */
+export interface SnoozeActionRequest {
+  type: typeof SNOOZE_ACTION_REQUEST;
+  action: 'wake' | 'cancel';
+  id: string;
+}
+
+export type SnoozeActionResponse = { status: 'ok' } | { status: 'failed' };
+
+export function isSnoozeActionRequest(value: unknown): value is SnoozeActionRequest {
+  const action = (value as { action?: unknown } | null)?.action;
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { type?: unknown }).type === SNOOZE_ACTION_REQUEST &&
+    (action === 'wake' || action === 'cancel') &&
+    typeof (value as { id?: unknown }).id === 'string'
+  );
+}
+
+export function isSnoozeTabRequest(value: unknown): value is SnoozeTabRequest {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { type?: unknown }).type === SNOOZE_TAB_REQUEST &&
+    typeof (value as { tabId?: unknown }).tabId === 'number' &&
+    typeof (value as { durationMs?: unknown }).durationMs === 'number'
+  );
+}

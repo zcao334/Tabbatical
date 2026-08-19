@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  addSnoozedTab,
+  getSnoozedTabs,
   getTabActivityMap,
+  removeSnoozedTab,
   removeTabActivity,
   replaceTabActivity,
   setTabActivity,
   type TabActivityMap,
 } from './storage';
-import type { TabActivity } from './types';
+import type { SnoozedTab, TabActivity } from './types';
 
 /** Minimal stand-in for chrome.storage.local, backed by a plain object. */
 let store: Record<string, unknown> = {};
@@ -106,5 +109,45 @@ describe('removeTabActivity', () => {
     const map = await getTabActivityMap();
     expect(map[1]).toBeUndefined();
     expect(map[2]).toBeDefined();
+  });
+});
+
+describe('snoozed tabs', () => {
+  const entry = (id: string): SnoozedTab => ({
+    id,
+    url: `https://example.com/${id}`,
+    title: `Page ${id}`,
+    snoozedAt: 1_000,
+    wakeAt: 2_000,
+  });
+
+  it('round-trips an entry', async () => {
+    await addSnoozedTab(entry('a'));
+
+    expect(await getSnoozedTabs()).toEqual({ a: entry('a') });
+  });
+
+  it('drops only the named entry', async () => {
+    await addSnoozedTab(entry('a'));
+    await addSnoozedTab(entry('b'));
+
+    await removeSnoozedTab('a');
+
+    expect(Object.keys(await getSnoozedTabs())).toEqual(['b']);
+  });
+
+  it('survives the tab map being cleared', async () => {
+    // The two buckets have opposite lifetimes: pruning a closed tab's activity
+    // must never touch the record that says it is coming back.
+    await setTabActivity(activity(1));
+    await addSnoozedTab(entry('a'));
+
+    await removeTabActivity(1);
+
+    expect(await getSnoozedTabs()).toEqual({ a: entry('a') });
+  });
+
+  it('reads as empty before anything is stored', async () => {
+    expect(await getSnoozedTabs()).toEqual({});
   });
 });
