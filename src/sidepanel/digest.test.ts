@@ -121,6 +121,23 @@ describe('the snooze picker', () => {
     expect(rows(container)[0].querySelector('.row-meta')?.textContent).toBe('');
   });
 
+  it('keeps the staleness line in one truncatable piece, so no digit is lost', async () => {
+    // Held as fixed segments, the tail was clipped mid-number and "score 50"
+    // rendered as a perfectly plausible "score 5".
+    const { container } = await mount();
+    const meta = rows(container)[0].querySelector('.row-meta');
+
+    expect(meta?.querySelectorAll('span')).toHaveLength(1);
+    expect(meta?.textContent).toMatch(/idle · revisited 0x · score \d+$/);
+  });
+
+  it('puts the full line and the URL in the hover text', async () => {
+    const { container } = await mount();
+
+    expect(rows(container)[0].title).toContain('https://example.com/');
+    expect(rows(container)[0].title).toMatch(/score \d+/);
+  });
+
   it('brings the staleness line back on cancel', async () => {
     const { container } = await mount();
     await click(rows(container)[0], 'Snooze');

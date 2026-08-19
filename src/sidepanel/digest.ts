@@ -92,6 +92,19 @@ function createDurationField(onSubmit: (durationMs: number) => void): HTMLElemen
   return form;
 }
 
+/**
+ * Ordered most useful first, because this line truncates from the right at
+ * panel width: how long it's been idle is what the user is deciding on, and
+ * the score is the arithmetic behind it. Whatever gets cut is on the tooltip.
+ */
+function metaFor(entry: ScoredTab): string {
+  return [
+    formatDaysIdle(entry.activity.lastActiveAt),
+    `revisited ${entry.activity.revisitCount}x`,
+    `score ${entry.staleness.toFixed(0)}`,
+  ].join(' · ');
+}
+
 function cancelAction(onClick: () => void): RowAction {
   return { label: 'Cancel', className: 'row-button row-button--quiet', onClick };
 }
@@ -114,13 +127,11 @@ function renderEntry(entry: ScoredTab, actions: EntryActions): HTMLLIElement {
     // Dropped while the picker is open. Four buttons leave the staleness line
     // no room at panel width, and the question on screen is "how long?", not
     // "how stale?" — the numbers are what the user already read to get here.
-    meta: stage
-      ? []
-      : [
-          formatDaysIdle(activity.lastActiveAt),
-          `revisited ${activity.revisitCount}x`,
-          `score ${entry.staleness.toFixed(0)}`,
-        ],
+    // One string, not segments. The segmented form protects the *trailing*
+    // part, which is what the archive needed — here the leading part is the
+    // one worth reading, and holding the tail fixed clipped digits off the
+    // score instead, turning 50 into a perfectly plausible 5.
+    meta: stage ? '' : metaFor(entry),
     error: rowState.errorFor(activity.tabId),
   };
 
@@ -148,7 +159,12 @@ function renderEntry(entry: ScoredTab, actions: EntryActions): HTMLLIElement {
     ];
   }
 
-  return createEntryRow(options);
+  const row = createEntryRow(options);
+  // The row truncates both the title and the staleness line at panel width, so
+  // the tooltip is where the untruncated version lives — same as the archive
+  // and snoozed views.
+  row.title = `${activity.url}\n${metaFor(entry)}`;
+  return row;
 }
 
 async function archiveTab(activity: TabActivity, container: HTMLElement): Promise<void> {
