@@ -15,6 +15,7 @@ import {
 import { extractTabContent } from './extraction';
 import { archiveTab } from './archive';
 import { cancelSnooze, handleSnoozeAlarm, reconcileSnoozes, snoozeTab, wakeSnoozedTab } from './snooze';
+import { handleReviewAlarm, refreshBadge, scheduleReviewAlarm } from './badge';
 
 // A tab must stay active continuously for this long before it's recorded —
 // filters out incidental alt-tab flicker from counting as a real visit.
@@ -93,17 +94,34 @@ chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error('Failed to set side panel behavior', error));
 
+async function start(): Promise<void> {
+  await initializeExistingTabs();
+  await reconcileSnoozes();
+  await scheduleReviewAlarm();
+  // After reconciling, so the first count reflects anything that woke on the
+  // way up rather than the state the browser was last closed in.
+  await refreshBadge();
+}
+
 chrome.runtime.onInstalled.addListener(() => {
-  void initializeExistingTabs();
-  void reconcileSnoozes();
+  void start();
 });
 chrome.runtime.onStartup.addListener(() => {
-  void initializeExistingTabs();
-  void reconcileSnoozes();
+  void start();
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   void handleSnoozeAlarm(alarm);
+  void handleReviewAlarm(alarm);
+});
+
+// Keeps the badge honest between scheduled recounts: closing, keeping,
+// archiving and snoozing all land here as a write to the tracking map. Cheap
+// enough to run on each — a read and a tab-group query, with no write of its
+// own, so this cannot feed back into itself.
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local' || !changes.tabActivityMap) return;
+  void refreshBadge();
 });
 
 chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {

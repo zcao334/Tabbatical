@@ -1,5 +1,5 @@
-import { computeStaleness } from '../shared/staleness';
-import { getTabActivityMap, patchTabActivity } from '../shared/storage';
+import { scoreTrackedTabs, type ScoredTab } from '../shared/review';
+import { patchTabActivity } from '../shared/storage';
 import { MS_PER_DAY, type TabActivity } from '../shared/types';
 import { isInjectableUrl, requestHostPermission } from '../shared/permissions';
 import {
@@ -20,36 +20,6 @@ import {
   type RowAction,
   type RowOptions,
 } from './components';
-
-interface DigestEntry {
-  activity: TabActivity;
-  staleness: number;
-}
-
-async function getActiveGroupIds(): Promise<Set<number>> {
-  const groups = await chrome.tabGroups.query({ collapsed: false });
-  return new Set(groups.map((group) => group.id));
-}
-
-async function buildDigest(): Promise<DigestEntry[]> {
-  const [map, activeGroupIds] = await Promise.all([getTabActivityMap(), getActiveGroupIds()]);
-  const now = Date.now();
-
-  return Object.values(map)
-    .map((activity) => ({
-      activity,
-      staleness: computeStaleness(
-        {
-          lastActiveAt: activity.lastActiveAt,
-          revisitCount: activity.revisitCount,
-          pinned: activity.pinned,
-          isInActiveGroup: activity.groupId != null && activeGroupIds.has(activity.groupId),
-        },
-        now,
-      ),
-    }))
-    .sort((a, b) => b.staleness - a.staleness);
-}
 
 function formatDaysIdle(lastActiveAt: number): string {
   const days = (Date.now() - lastActiveAt) / MS_PER_DAY;
@@ -134,7 +104,7 @@ interface EntryActions {
   onCloseSnooze: () => void;
 }
 
-function renderEntry(entry: DigestEntry, actions: EntryActions): HTMLLIElement {
+function renderEntry(entry: ScoredTab, actions: EntryActions): HTMLLIElement {
   const { activity } = entry;
   const pending = rowState.pendingFor(activity.tabId);
   const stage = snoozeMenu.detailFor(activity.tabId);
@@ -246,7 +216,7 @@ const renderGuard = createRenderGuard();
 
 export async function renderDigest(container: HTMLElement): Promise<void> {
   const isCurrent = renderGuard.begin();
-  const entries = await buildDigest();
+  const entries = await scoreTrackedTabs();
   if (!isCurrent()) return;
 
   // A tab closed while its picker was open would leave the picker armed on a
