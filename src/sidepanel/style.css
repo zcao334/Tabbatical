@@ -248,3 +248,62 @@ h1 {
   font-size: 13px;
   color: #5f6368;
 }
+
+/* Settings */
+
+.setting {
+  margin-bottom: 16px;
+}
+
+.setting-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: #202124;
+}
+
+.setting-input {
+  font: inherit;
+  font-size: 13px;
+  /* Fixed rather than flexible: these hold at most a few digits, and a field
+     that resizes with the label beside it makes the column of them ragged. */
+  width: 72px;
+  flex: none;
+  padding: 4px 6px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  color: #202124;
+}
+
+.setting-input:focus {
+  outline: none;
+  border-color: #1a73e8;
+}
+
+.setting-hint {
+  font-size: 12px;
+  color: #5f6368;
+  margin: 4px 0 0;
+}
+
+/* Always present so an error doesn't shift the field below it, but a <p> keeps
+   its default margins while empty, which would show as a gap under every row. */
+.setting-error {
+  margin: 0;
+}
+
+.setting-error:not(:empty) {
+  font-size: 12px;
+  color: #c5221f;
+  margin: 4px 0 0;
+}
+
+.setting-note {
+  font-size: 12px;
+  color: #5f6368;
+  border-top: 1px solid #dadce0;
+  padding-top: 12px;
+  margin: 0 0 12px;
+}

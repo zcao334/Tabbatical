@@ -119,8 +119,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 // archiving and snoozing all land here as a write to the tracking map. Cheap
 // enough to run on each — a read and a tab-group query, with no write of its
 // own, so this cannot feed back into itself.
+// A weight change re-scores every tracked tab, so the badge can change without
+// a single tab having moved.
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName !== 'local' || !changes.tabActivityMap) return;
+  if (areaName !== 'local' || !(changes.tabActivityMap || changes.stalenessConfig)) return;
   void refreshBadge();
 });
 

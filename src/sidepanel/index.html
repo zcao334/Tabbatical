@@ -18,6 +18,9 @@
       <button id="tab-archive" class="tab" role="tab" aria-selected="false" aria-controls="view-archive">
         Archive
       </button>
+      <button id="tab-settings" class="tab" role="tab" aria-selected="false" aria-controls="view-settings">
+        Settings
+      </button>
     </nav>
 
     <section id="view-digest" role="tabpanel" aria-labelledby="tab-digest">
@@ -42,6 +45,11 @@
         spellcheck="false"
       />
       <ul id="archive-list" class="entry-list"></ul>
+    </section>
+
+    <section id="view-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+      <p class="subtitle">How tabs are scored. Changes re-rank the review list straight away.</p>
+      <div id="settings-form"></div>
     </section>
 
     <script type="module" src="./main.ts"></script>

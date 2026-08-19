@@ -4,12 +4,15 @@ import {
   getSnoozedTabs,
   getTabActivityMap,
   removeSnoozedTab,
+  getStalenessConfig,
   removeTabActivity,
   replaceTabActivity,
+  resetStalenessConfig,
+  saveStalenessConfig,
   setTabActivity,
   type TabActivityMap,
 } from './storage';
-import type { SnoozedTab, TabActivity } from './types';
+import { DEFAULT_STALENESS_CONFIG, type SnoozedTab, type TabActivity } from './types';
 
 /** Minimal stand-in for chrome.storage.local, backed by a plain object. */
 let store: Record<string, unknown> = {};
@@ -149,5 +152,65 @@ describe('snoozed tabs', () => {
 
   it('reads as empty before anything is stored', async () => {
     expect(await getSnoozedTabs()).toEqual({});
+  });
+});
+
+describe('the staleness config', () => {
+  it('reads as the defaults before anything is saved', async () => {
+    expect(await getStalenessConfig()).toEqual(DEFAULT_STALENESS_CONFIG);
+  });
+
+  it('round-trips a saved weight', async () => {
+    await saveStalenessConfig({ idleDayWeight: 20 });
+
+    expect((await getStalenessConfig()).idleDayWeight).toBe(20);
+  });
+
+  it('leaves the other weights alone when one is saved', async () => {
+    // The form saves a field at a time, so this is the normal path, not an
+    // edge case.
+    await saveStalenessConfig({ idleDayWeight: 20 });
+    await saveStalenessConfig({ revisitWeight: 1 });
+
+    expect(await getStalenessConfig()).toEqual({
+      ...DEFAULT_STALENESS_CONFIG,
+      idleDayWeight: 20,
+      revisitWeight: 1,
+    });
+  });
+
+  it('sanitizes on the way in, so nothing unusable is ever stored', async () => {
+    await saveStalenessConfig({ idleDayWeight: Number.POSITIVE_INFINITY });
+
+    expect(store.stalenessConfig).toEqual(DEFAULT_STALENESS_CONFIG);
+  });
+
+  it('sanitizes on the way out, covering a record it did not write', async () => {
+    // A downgrade, a synced profile or a hand-edited record can all put
+    // something here that never went through saveStalenessConfig.
+    store.stalenessConfig = { idleDayWeight: 'lots', pinnedPenalty: 250 };
+
+    expect(await getStalenessConfig()).toEqual({
+      ...DEFAULT_STALENESS_CONFIG,
+      pinnedPenalty: 250,
+    });
+  });
+
+  it('restores the defaults', async () => {
+    await saveStalenessConfig({ idleDayWeight: 20, pinnedPenalty: 0 });
+
+    await resetStalenessConfig();
+
+    expect(await getStalenessConfig()).toEqual(DEFAULT_STALENESS_CONFIG);
+  });
+
+  it('writes the defaults out on reset rather than clearing the key', async () => {
+    // A removal would reach storage listeners as an undefined newValue, which
+    // a listener reading the new config would take as "no weights at all".
+    await saveStalenessConfig({ idleDayWeight: 20 });
+
+    await resetStalenessConfig();
+
+    expect(store.stalenessConfig).toEqual(DEFAULT_STALENESS_CONFIG);
   });
 });
