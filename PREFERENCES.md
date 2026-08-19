@@ -22,6 +22,11 @@ before starting new work; add to it whenever a preference is stated.
 - **Work on `dev` by default.** Don't create a feature branch for new work
   unless asked; commit straight to `dev` and leave merging to `main` for an
   explicit request.
+- **Don't keep code local — always push to the corresponding branch.** After
+  committing to `dev`, push `dev`; after merging into `main`, push `main` too.
+  Work that only exists on this machine isn't backed up, isn't visible on the
+  repo, and silently accumulates until a push becomes a big one. Push without
+  being asked; the branch rules above still decide *what* lands where.
 - **Audit for duplicated functionality before merging into `main`.** A merge is
   the point where parallel work converges, so recheck whether anything being
   merged duplicates logic that already exists. If it does, don't resolve it
