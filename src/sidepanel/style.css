@@ -121,6 +121,10 @@ h1 {
   display: flex;
   align-items: baseline;
   min-width: 0;
+  /* Only the leading segment is allowed to shrink, so the fixed ones will run
+     past the end of a narrow row. Clipped here, or they paint out over the
+     buttons instead of stopping at the edge of the text column. */
+  overflow: hidden;
   font-size: 11px;
   color: #5f6368;
 }

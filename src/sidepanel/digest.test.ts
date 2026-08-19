@@ -112,6 +112,23 @@ describe('the snooze picker', () => {
     expect(labelsIn(rows(container)[0])).toEqual(['1 day', '1 week', 'Custom', 'Cancel']);
   });
 
+  it('drops the staleness line, which the durations would otherwise overlap', async () => {
+    const { container } = await mount();
+    expect(rows(container)[0].querySelector('.row-meta')?.textContent).not.toBe('');
+
+    await click(rows(container)[0], 'Snooze');
+
+    expect(rows(container)[0].querySelector('.row-meta')?.textContent).toBe('');
+  });
+
+  it('brings the staleness line back on cancel', async () => {
+    const { container } = await mount();
+    await click(rows(container)[0], 'Snooze');
+    await click(rows(container)[0], 'Cancel');
+
+    expect(rows(container)[0].querySelector('.row-meta')?.textContent).toMatch(/revisited/);
+  });
+
   it('sends the chosen preset to the background', async () => {
     const { container, tabIds } = await mount();
     await click(rows(container)[0], 'Snooze');
@@ -182,6 +199,14 @@ describe('a custom snooze duration', () => {
 
     expect(rows(container)[0].querySelector('.row-input')).not.toBeNull();
     expect(labelsIn(rows(container)[0])).toEqual(['Snooze', 'Cancel']);
+  });
+
+  it('leaves the staleness line out for the custom field too', async () => {
+    const { container } = await mount();
+    await click(rows(container)[0], 'Snooze');
+    await click(rows(container)[0], 'Custom');
+
+    expect(rows(container)[0].querySelector('.row-meta')?.textContent).toBe('');
   });
 
   it('sends the parsed duration', async () => {

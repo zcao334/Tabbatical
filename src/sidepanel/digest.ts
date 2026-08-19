@@ -141,11 +141,16 @@ function renderEntry(entry: DigestEntry, actions: EntryActions): HTMLLIElement {
 
   const options: RowOptions = {
     title: activity.title || activity.url,
-    meta: [
-      formatDaysIdle(activity.lastActiveAt),
-      `revisited ${activity.revisitCount}x`,
-      `score ${entry.staleness.toFixed(0)}`,
-    ],
+    // Dropped while the picker is open. Four buttons leave the staleness line
+    // no room at panel width, and the question on screen is "how long?", not
+    // "how stale?" — the numbers are what the user already read to get here.
+    meta: stage
+      ? []
+      : [
+          formatDaysIdle(activity.lastActiveAt),
+          `revisited ${activity.revisitCount}x`,
+          `score ${entry.staleness.toFixed(0)}`,
+        ],
     error: rowState.errorFor(activity.tabId),
   };
 
