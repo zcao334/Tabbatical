@@ -1,7 +1,10 @@
-import type { SnoozedTab, TabActivity } from './types';
+import { sanitizeStalenessConfig } from './staleness';
+import { DEFAULT_STALENESS_CONFIG, type SnoozedTab, type StalenessConfig, type TabActivity } from './types';
 
 const TAB_ACTIVITY_KEY = 'tabActivityMap';
 const SNOOZED_TABS_KEY = 'snoozedTabs';
+const LAST_ACTIVE_TAB_KEY = 'lastActiveTabByWindow';
+export const STALENESS_CONFIG_KEY = 'stalenessConfig';
 
 async function readMap<T>(key: string): Promise<Record<string, T>> {
   const result = await chrome.storage.local.get(key);
@@ -102,4 +105,90 @@ export async function removeSnoozedTab(id: string): Promise<void> {
   await updateMap<SnoozedTab>(SNOOZED_TABS_KEY, (map) => {
     delete map[id];
   });
+}
+
+/**
+ * The tab each window most recently settled on, keyed by window id.
+ *
+ * Stored rather than held in memory because the thing that reads it is a
+ * service worker, and an MV3 worker is unloaded after about thirty seconds
+ * idle. A Map here survived only as long as the worker did: after every
+ * unload the next activation saw no previous tab, counted as a first visit
+ * rather than a revisit, and the count stopped moving.
+ *
+ * Per-window because each window has its own focus history — switching
+ * windows is not a revisit within either of them.
+ */
+export type LastActiveTabMap = Record<number, number>;
+
+export async function getLastActiveTabByWindow(): Promise<LastActiveTabMap> {
+  return (await readMap<number>(LAST_ACTIVE_TAB_KEY)) as LastActiveTabMap;
+}
+
+export async function setLastActiveTab(windowId: number, tabId: number): Promise<void> {
+  await updateMap<number>(LAST_ACTIVE_TAB_KEY, (map) => {
+    map[windowId] = tabId;
+  });
+}
+
+/** Drops a closed window, so the record doesn't accumulate dead window ids. */
+export async function forgetWindow(windowId: number): Promise<void> {
+  await updateMap<number>(LAST_ACTIVE_TAB_KEY, (map) => {
+    delete map[windowId];
+  });
+}
+
+/**
+ * Follow a discarded tab onto its replacement id.
+ *
+ * Without this the window's last-active tab points at an id that no longer
+ * exists, so returning to that same tab reads as a switch and counts a revisit
+ * the user never made.
+ */
+export async function replaceLastActiveTab(
+  removedTabId: number,
+  addedTabId: number,
+): Promise<void> {
+  await updateMap<number>(LAST_ACTIVE_TAB_KEY, (map) => {
+    for (const [windowId, tabId] of Object.entries(map)) {
+      if (tabId === removedTabId) map[Number(windowId)] = addedTabId;
+    }
+  });
+}
+
+/**
+ * The user's scoring weights, always complete and always in range.
+ *
+ * Sanitized on read rather than trusted from the write path, because the write
+ * path isn't the only way this key changes: a downgrade, a synced profile or a
+ * hand-edited storage record can all leave something here that the scoring
+ * function would otherwise consume as-is.
+ */
+export async function getStalenessConfig(): Promise<StalenessConfig> {
+  const result = await chrome.storage.local.get(STALENESS_CONFIG_KEY);
+  return sanitizeStalenessConfig(result[STALENESS_CONFIG_KEY]);
+}
+
+/**
+ * Change some weights, leaving the rest alone.
+ *
+ * Read-modify-write like the maps above: the settings form saves one field at
+ * a time, and a whole-object write would race a second field saved while the
+ * first was still in flight.
+ */
+export async function saveStalenessConfig(patch: Partial<StalenessConfig>): Promise<void> {
+  const next = sanitizeStalenessConfig({ ...(await getStalenessConfig()), ...patch });
+  await chrome.storage.local.set({ [STALENESS_CONFIG_KEY]: next });
+}
+
+/**
+ * Back to the defaults.
+ *
+ * Writes them out rather than removing the key, so the change is visible to
+ * chrome.storage.onChanged — a removal would leave every listener that reads
+ * `changes.stalenessConfig.newValue` seeing undefined and re-ranking to
+ * nothing.
+ */
+export async function resetStalenessConfig(): Promise<void> {
+  await chrome.storage.local.set({ [STALENESS_CONFIG_KEY]: { ...DEFAULT_STALENESS_CONFIG } });
 }

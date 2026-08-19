@@ -8,7 +8,7 @@
  */
 
 import { computeStaleness } from './staleness';
-import { getTabActivityMap } from './storage';
+import { getStalenessConfig, getTabActivityMap } from './storage';
 import type { TabActivity } from './types';
 
 export interface ScoredTab {
@@ -34,7 +34,11 @@ async function getActiveGroupIds(): Promise<Set<number>> {
 
 /** Every tracked tab, scored and ranked stalest first. */
 export async function scoreTrackedTabs(now: number = Date.now()): Promise<ScoredTab[]> {
-  const [map, activeGroupIds] = await Promise.all([getTabActivityMap(), getActiveGroupIds()]);
+  const [map, activeGroupIds, config] = await Promise.all([
+    getTabActivityMap(),
+    getActiveGroupIds(),
+    getStalenessConfig(),
+  ]);
 
   return Object.values(map)
     .map((activity) => ({
@@ -47,6 +51,7 @@ export async function scoreTrackedTabs(now: number = Date.now()): Promise<Scored
           isInActiveGroup: activity.groupId != null && activeGroupIds.has(activity.groupId),
         },
         now,
+        config,
       ),
     }))
     .sort((a, b) => b.staleness - a.staleness);

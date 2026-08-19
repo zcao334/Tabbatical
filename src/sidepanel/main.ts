@@ -1,8 +1,9 @@
 import { renderDigest } from './digest';
 import { initArchiveSearch, renderArchive } from './archive';
 import { renderSnoozed } from './snoozed';
+import { renderSettings } from './settings';
 
-type ViewName = 'digest' | 'snoozed' | 'archive';
+type ViewName = 'digest' | 'snoozed' | 'archive' | 'settings';
 
 interface View {
   tab: HTMLElement | null;
@@ -29,6 +30,12 @@ const views: Record<ViewName, View> = {
     section: document.getElementById('view-archive'),
     list: document.getElementById('archive-list'),
     render: renderArchive,
+  },
+  settings: {
+    tab: document.getElementById('tab-settings'),
+    section: document.getElementById('view-settings'),
+    list: document.getElementById('settings-form'),
+    render: renderSettings,
   },
 };
 
@@ -87,5 +94,11 @@ if (views.digest.list) {
     // Covers a tab waking on its own with the list open, which is otherwise
     // the one change this view would show stale.
     if (changes.snoozedTabs && activeView === 'snoozed') refresh('snoozed');
+
+    // Re-rank on a weight change, so switching back from Settings shows the
+    // new order rather than the order the panel was opened with. Deliberately
+    // one-way: the settings form is never rebuilt from its own write, which
+    // would pull the caret out of the field being edited.
+    if (changes.stalenessConfig) refresh('digest');
   });
 }

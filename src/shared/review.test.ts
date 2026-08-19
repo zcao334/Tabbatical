@@ -5,7 +5,7 @@ import {
   scoreTrackedTabs,
   type ScoredTab,
 } from './review';
-import { setTabActivity } from './storage';
+import { saveStalenessConfig, setTabActivity } from './storage';
 import { MS_PER_DAY, type TabActivity } from './types';
 
 const NOW = new Date('2026-08-19T09:00:00Z').getTime();
@@ -125,5 +125,50 @@ describe('countDueForReview', () => {
     await track(1, { lastActiveAt: NOW - 3_600_000 });
 
     expect(countDueForReview(await scoreTrackedTabs(NOW))).toBe(0);
+  });
+});
+
+describe('the stored weights', () => {
+  it('rank by the user’s weights rather than the defaults', async () => {
+    // Tab 2 is idler but has been revisited. Under the defaults that revisit
+    // barely counts; turned up, it outweighs the extra idle day.
+    await track(1, { lastActiveAt: NOW - 5 * MS_PER_DAY, revisitCount: 0 });
+    await track(2, { lastActiveAt: NOW - 6 * MS_PER_DAY, revisitCount: 1 });
+
+    const byDefault = await scoreTrackedTabs(NOW);
+    expect(byDefault[0].activity.tabId).toBe(2);
+
+    await saveStalenessConfig({ revisitWeight: 100 });
+
+    const reweighted = await scoreTrackedTabs(NOW);
+    expect(reweighted[0].activity.tabId).toBe(1);
+  });
+
+  it('move a tab across the review threshold', async () => {
+    // Two idle days scores 20 by default — under the threshold, so no badge.
+    await track(1, { lastActiveAt: NOW - 2 * MS_PER_DAY });
+    expect(countDueForReview(await scoreTrackedTabs(NOW))).toBe(0);
+
+    await saveStalenessConfig({ idleDayWeight: 20 });
+
+    expect(countDueForReview(await scoreTrackedTabs(NOW))).toBe(1);
+  });
+
+  it('can bring a pinned tab into review, since the penalty is a setting too', async () => {
+    await track(1, { lastActiveAt: NOW - 30 * MS_PER_DAY, pinned: true });
+    expect(countDueForReview(await scoreTrackedTabs(NOW))).toBe(0);
+
+    await saveStalenessConfig({ pinnedPenalty: 0 });
+
+    expect(countDueForReview(await scoreTrackedTabs(NOW))).toBe(1);
+  });
+
+  it('fall back to the defaults when the stored record is unusable', async () => {
+    await track(1, { lastActiveAt: NOW - 5 * MS_PER_DAY });
+    const expected = (await scoreTrackedTabs(NOW))[0].staleness;
+
+    store.stalenessConfig = 'not a config';
+
+    expect((await scoreTrackedTabs(NOW))[0].staleness).toBe(expected);
   });
 });

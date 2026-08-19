@@ -96,7 +96,11 @@ function metaFor(entry: ScoredTab): string {
   return [
     formatDaysIdle(entry.activity.lastActiveAt),
     `revisited ${entry.activity.revisitCount}x`,
-    `score ${entry.staleness.toFixed(0)}`,
+    // Floored at zero for display only — ranking still uses the real value,
+    // negative and all. Below zero the number carries nothing the "active
+    // today" beside it doesn't already say, and a minus sign on a score reads
+    // as something having gone wrong rather than as a tab being in use.
+    `score ${Math.max(0, entry.staleness).toFixed(0)}`,
   ].join(' · ');
 }
 

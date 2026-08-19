@@ -196,3 +196,50 @@ describe('delete', () => {
     expect(container.textContent).toContain('Nothing archived yet');
   });
 });
+
+describe('loading', () => {
+  it('says it is loading while there is nothing on screen yet', async () => {
+    await addArchiveEntry({
+      url: 'https://example.com/a',
+      title: 'A',
+      hasFullText: true,
+      extractedText: 'body text',
+    });
+    const container = document.createElement('ul');
+    document.body.appendChild(container);
+
+    // Deliberately not awaited: the point is what the panel shows *during* the
+    // read, which is the whole reason this state exists.
+    const pending = renderArchive(container);
+    expect(container.querySelector('.loading-state')).not.toBeNull();
+
+    await pending;
+    await flush();
+
+    expect(container.querySelector('.loading-state')).toBeNull();
+    expect(titlesIn(container)).toEqual(['A']);
+  });
+
+  it('keeps the rows up while re-reading, rather than blinking them away', async () => {
+    // Re-entering the Archive tab re-renders a list that is already correct.
+    const { container } = await mount([{ url: 'https://example.com/a', title: 'A' }]);
+    await flush();
+
+    const pending = renderArchive(container);
+
+    expect(container.querySelector('.loading-state')).toBeNull();
+    expect(titlesIn(container)).toEqual(['A']);
+    await pending;
+  });
+
+  it('leaves an empty archive reading as empty, not as loading', async () => {
+    const { container } = await mount([]);
+    await flush();
+
+    const pending = renderArchive(container);
+
+    expect(container.querySelector('.loading-state')).toBeNull();
+    expect(container.querySelector('.empty-state')).not.toBeNull();
+    await pending;
+  });
+});
