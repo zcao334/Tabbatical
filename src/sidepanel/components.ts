@@ -30,8 +30,15 @@ export interface RowOptions {
    */
   meta: string;
   faviconUrl?: string;
-  /** Small label beside the title, e.g. marking an entry as metadata-only. */
-  badge?: string;
+  /**
+   * Small labels on the meta line — an entry being metadata-only, a page
+   * being open right now.
+   *
+   * Takes a list because those two are independent: a page can be both, and
+   * one badge silently winning over the other would hide a fact the row is
+   * there to state.
+   */
+  badge?: string | string[];
   /** Matched page text with the search term highlighted. */
   snippet?: Snippet;
   /** Error text shown under the row, e.g. a failed archive. */
@@ -118,10 +125,11 @@ export function createEntryRow(options: RowOptions): HTMLLIElement {
     meta.appendChild(text);
   }
 
-  if (options.badge) {
+  const badges = (Array.isArray(options.badge) ? options.badge : [options.badge]).filter(Boolean);
+  for (const label of badges) {
     const badge = document.createElement('span');
     badge.className = 'row-badge';
-    badge.textContent = options.badge;
+    badge.textContent = label as string;
     meta.appendChild(badge);
   }
 

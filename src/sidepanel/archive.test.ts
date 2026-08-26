@@ -7,7 +7,21 @@ import { addArchiveEntry, closeArchiveDb, countArchiveEntries } from '../shared/
 import { initArchiveSearch, renderArchive } from './archive';
 
 const createTab = vi.fn();
-vi.stubGlobal('chrome', { tabs: { create: createTab } });
+const updateTab = vi.fn();
+const updateWindow = vi.fn();
+
+/** Tabs the browser is pretending to have open. */
+let openTabs: Array<Partial<chrome.tabs.Tab>> = [];
+const queryTabs = vi.fn(async () => openTabs);
+
+vi.stubGlobal('chrome', {
+  tabs: {
+    create: createTab,
+    update: updateTab,
+    query: queryTabs,
+  },
+  windows: { update: updateWindow },
+});
 
 /** Lets queued handlers, renders and IndexedDB callbacks settle. */
 async function flush(): Promise<void> {
@@ -53,6 +67,11 @@ function clickButton(row: HTMLElement, label: string): void {
 
 beforeEach(() => {
   createTab.mockReset();
+  updateTab.mockReset();
+  updateWindow.mockReset();
+  openTabs = [];
+  queryTabs.mockReset();
+  queryTabs.mockImplementation(async () => openTabs);
   document.body.innerHTML = '';
 });
 
@@ -241,5 +260,132 @@ describe('loading', () => {
     expect(container.querySelector('.loading-state')).toBeNull();
     expect(container.querySelector('.empty-state')).not.toBeNull();
     await pending;
+  });
+});
+
+describe('entries whose page is open', () => {
+  const badgesOn = (row: HTMLElement) =>
+    Array.from(row.querySelectorAll('.row-badge')).map((badge) => badge.textContent);
+
+  it('marks an entry that is also open right now', async () => {
+    // Restoring doesn't remove the entry, so the same page can be in the
+    // archive and on screen at once. The row has to say so.
+    openTabs = [{ id: 5, windowId: 1, url: 'https://example.com/a' }];
+
+    const { container } = await mount([{ url: 'https://example.com/a', title: 'A' }]);
+    await flush();
+
+    expect(badgesOn(rowByTitle(container, 'A'))).toContain('open');
+  });
+
+  it('leaves a closed page unmarked', async () => {
+    const { container } = await mount([{ url: 'https://example.com/a', title: 'A' }]);
+    await flush();
+
+    expect(badgesOn(rowByTitle(container, 'A'))).not.toContain('open');
+  });
+
+  it('marks only the entries that match', async () => {
+    openTabs = [{ id: 5, windowId: 1, url: 'https://example.com/a' }];
+
+    const { container } = await mount([
+      { url: 'https://example.com/a', title: 'A' },
+      { url: 'https://example.com/b', title: 'B' },
+    ]);
+    await flush();
+
+    expect(badgesOn(rowByTitle(container, 'A'))).toContain('open');
+    expect(badgesOn(rowByTitle(container, 'B'))).not.toContain('open');
+  });
+
+  it('does not match a different page on the same site', async () => {
+    openTabs = [{ id: 5, windowId: 1, url: 'https://example.com/other' }];
+
+    const { container } = await mount([{ url: 'https://example.com/a', title: 'A' }]);
+    await flush();
+
+    expect(badgesOn(rowByTitle(container, 'A'))).not.toContain('open');
+  });
+
+  it('keeps the metadata-only badge alongside it', async () => {
+    // Both facts are true at once, and one silently winning would hide the
+    // other.
+    openTabs = [{ id: 5, windowId: 1, url: 'https://example.com/a' }];
+    await addArchiveEntry({ url: 'https://example.com/a', title: 'A', hasFullText: false });
+
+    const container = document.createElement('ul');
+    const input = document.createElement('input');
+    document.body.append(container, input);
+    initArchiveSearch(input, container);
+    await renderArchive(container);
+    await flush();
+
+    expect(badgesOn(rowByTitle(container, 'A'))).toEqual(['metadata only', 'open']);
+  });
+
+  it('offers to switch rather than restore', async () => {
+    openTabs = [{ id: 5, windowId: 1, url: 'https://example.com/a' }];
+
+    const { container } = await mount([{ url: 'https://example.com/a', title: 'A' }]);
+    await flush();
+
+    const labels = Array.from(rowByTitle(container, 'A').querySelectorAll('button')).map(
+      (button) => button.textContent,
+    );
+    expect(labels).toContain('Switch to tab');
+    expect(labels).not.toContain('Restore');
+  });
+
+  it('switches to the existing tab instead of opening a second copy', async () => {
+    openTabs = [{ id: 5, windowId: 3, url: 'https://example.com/a' }];
+
+    const { container } = await mount([{ url: 'https://example.com/a', title: 'A' }]);
+    await flush();
+
+    clickButton(rowByTitle(container, 'A'), 'Switch to tab');
+    await flush();
+
+    expect(updateTab).toHaveBeenCalledWith(5, { active: true });
+    expect(createTab).not.toHaveBeenCalled();
+  });
+
+  it('focuses the window too, so a background window is not silently ignored', async () => {
+    openTabs = [{ id: 5, windowId: 3, url: 'https://example.com/a' }];
+
+    const { container } = await mount([{ url: 'https://example.com/a', title: 'A' }]);
+    await flush();
+
+    clickButton(rowByTitle(container, 'A'), 'Switch to tab');
+    await flush();
+
+    expect(updateWindow).toHaveBeenCalledWith(3, { focused: true });
+  });
+
+  it('opens a tab when the page was closed after the row was drawn', async () => {
+    // The row said "Switch to tab", then the tab went away. Creating one is
+    // the recoverable outcome, so the click re-checks rather than trusting
+    // the snapshot it was rendered from.
+    openTabs = [{ id: 5, windowId: 1, url: 'https://example.com/a' }];
+    const { container } = await mount([{ url: 'https://example.com/a', title: 'A' }]);
+    await flush();
+
+    openTabs = [];
+    clickButton(rowByTitle(container, 'A'), 'Switch to tab');
+    await flush();
+
+    expect(createTab).toHaveBeenCalledWith({ url: 'https://example.com/a' });
+    expect(updateTab).not.toHaveBeenCalled();
+  });
+
+  it('still shows the archive when the tabs cannot be read', async () => {
+    // The marker is worth losing; the view is not.
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    queryTabs.mockRejectedValue(new Error('no tabs permission'));
+
+    const { container } = await mount([{ url: 'https://example.com/a', title: 'A' }]);
+    await flush();
+
+    expect(titlesIn(container)).toEqual(['A']);
+    expect(rowByTitle(container, 'A').querySelectorAll('.row-badge')).toHaveLength(0);
   });
 });

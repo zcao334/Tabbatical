@@ -347,3 +347,9 @@ h1 {
   margin: 0;
   accent-color: #1a73e8;
 }
+
+/* Two badges can sit together (metadata-only and open), so they need to keep
+   off each other rather than relying on the meta text for spacing. */
+.row-badge + .row-badge {
+  margin-left: 4px;
+}

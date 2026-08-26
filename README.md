@@ -58,6 +58,11 @@ without host permission — are archived as metadata and labelled `metadata only
 failing silently. Host permission is requested per-origin, at the moment you click, and never up
 front.
 
+Restoring doesn't remove the entry: the capture may be the only surviving copy of a page that has
+since changed or gone, so reopening one shouldn't quietly destroy it. Instead an entry whose page
+is open right now is marked `open` and offers to switch to that tab rather than opening a second
+copy of it.
+
 **Tunable scoring.** Every weight in the staleness formula is editable in Settings, next to the
 prompt's own toggle and batch size, and a change re-ranks the digest immediately. The defaults
 are a starting point, not an assertion — how long a tab should sit before it's worth surfacing
