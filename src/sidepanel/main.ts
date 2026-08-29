@@ -2,7 +2,6 @@ import { renderDigest } from './digest';
 import { initArchiveSearch, renderArchive } from './archive';
 import { renderSnoozed } from './snoozed';
 import { renderSettings } from './settings';
-import { currentSurface } from '../shared/surface';
 
 type ViewName = 'digest' | 'snoozed' | 'archive' | 'settings';
 
@@ -70,33 +69,6 @@ function showView(name: ViewName): void {
 
 for (const name of VIEW_NAMES) {
   views[name].tab?.addEventListener('click', () => showView(name));
-}
-
-/**
- * The dropdown gets a way to become the docked panel.
- *
- * This is the one place sidePanel.open() can be called at all: it demands a
- * user gesture, and a button click is one where an alarm or a notification
- * click is not. Closing the dropdown afterwards avoids leaving the same view
- * on screen twice.
- */
-const surface = currentSurface();
-document.body.dataset.surface = surface;
-
-const openPanelButton = document.getElementById('open-panel');
-if (openPanelButton && surface === 'popup') {
-  openPanelButton.hidden = false;
-  openPanelButton.addEventListener('click', () => {
-    void (async () => {
-      try {
-        const { id } = await chrome.windows.getLastFocused();
-        if (id != null) await chrome.sidePanel.open({ windowId: id });
-        window.close();
-      } catch (error) {
-        console.error('[Tabbatical] Could not dock the panel', error);
-      }
-    })();
-  });
 }
 
 const archiveSearch = document.getElementById('archive-search');

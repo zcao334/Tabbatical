@@ -1,5 +1,4 @@
 import { forgetWindow, removeTabActivity, setSessionStartedAt } from '../shared/storage';
-import { surfacePath } from '../shared/surface';
 import {
   commitActivation,
   handleTabReplaced,
@@ -28,24 +27,12 @@ const ACTIVE_DWELL_MS = 7_000;
 // since the activation it was waiting to confirm is over.
 const pendingActivationTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
-// The toolbar click opens the dropdown (manifest action.default_popup), and
-// the docked panel is reached from the dropdown's own button — the only
-// context carrying the user gesture sidePanel.open() demands.
-//
-// openPanelOnActionClick is set to false rather than simply left alone.
-// setPanelBehavior writes persistent profile state, so a build that once set
-// it true leaves it true forever; dropping the call would upgrade those
-// profiles into a version where the panel keeps hijacking the toolbar click
-// and the dropdown never appears.
+// Set on every startup rather than once at install: setPanelBehavior writes
+// persistent profile state, so a profile that ran a build which turned this
+// off keeps it off until something turns it back on.
 chrome.sidePanel
-  .setPanelBehavior({ openPanelOnActionClick: false })
+  .setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error('[Tabbatical] Failed to set the action behaviour', error));
-
-// Marking the panel's URL is what lets one document tell which of its three
-// surfaces it is being shown in, and so whether to offer that button at all.
-chrome.sidePanel
-  .setOptions({ path: surfacePath('panel') })
-  .catch((error) => console.error('[Tabbatical] Failed to set the side panel path', error));
 
 async function start(): Promise<void> {
   await initializeExistingTabs();

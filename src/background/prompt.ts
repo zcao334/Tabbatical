@@ -14,7 +14,6 @@ import {
 import { countDueForReview, scoreTrackedTabs } from '../shared/review';
 import { getPromptConfig, getPromptState, setLastPromptedAt } from '../shared/storage';
 import { focusTab } from '../shared/tabs';
-import { surfacePath } from '../shared/surface';
 
 /**
  * A fixed id, so there is only ever one prompt outstanding. Chrome would
@@ -28,13 +27,8 @@ const NOTIFICATION_ID = 'tabbatical:review-prompt';
 
 const REVIEW_BUTTON = 0;
 
-/**
- * Where the click lands if the side panel can't be opened programmatically.
- *
- * Marked as the tab surface so the page knows not to offer the dropdown's
- * "Dock to side" button, which would be meaningless in a tab.
- */
-const PANEL_PATH = surfacePath('tab');
+/** Where the click lands if the side panel can't be opened programmatically. */
+const PANEL_PATH = 'src/sidepanel/index.html';
 
 /**
  * Fire the prompt if this is the moment for it.

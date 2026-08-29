@@ -63,11 +63,6 @@ since changed or gone, so reopening one shouldn't quietly destroy it. Instead an
 is open right now is marked `open` and offers to switch to that tab rather than opening a second
 copy of it.
 
-**Two ways in.** The toolbar icon opens a dropdown; a button inside it docks the same views into
-the side panel for a longer session, since a dropdown closes the moment you click a tab to look
-at it. It's one document either way — it reads a marker off its own URL to know which surface it
-is, and only the dropdown offers the button.
-
 **Tunable scoring.** Every weight in the staleness formula is editable in Settings, next to the
 prompt's own toggle and batch size, and a change re-ranks the digest immediately. The defaults
 are a starting point, not an assertion — how long a tab should sit before it's worth surfacing
@@ -88,7 +83,7 @@ Then in Chrome:
    the pin. This matters more than it sounds — the badge is the whole proactive mechanism, and
    an unpinned extension hides it behind the puzzle menu, where you only see it if you were
    already going to look.
-4. Click the icon for the dropdown, or **Dock to side** inside it for the side panel.
+4. Click the icon to open the side panel.
 
 Tabs need a few days of real use before the digest has anything interesting to say, since
 everything starts at zero idle days.
@@ -111,7 +106,7 @@ at runtime rather than declared in the manifest.
 |---|---|
 | `src/background/` | Service worker and its logic: activity tracking, snooze, archive, badge, prompt |
 | `src/shared/` | Everything both surfaces need — storage, scoring, search, types |
-| `src/sidepanel/` | The four views and the row components they share, across all three surfaces |
+| `src/sidepanel/` | The four views and the row components they share |
 | `src/content/` | The injected extractor |
 
 Logic lives in `shared/` or in a named background module rather than in `service-worker.ts`,

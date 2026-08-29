@@ -22,8 +22,7 @@
     "default_path": "src/sidepanel/index.html"
   },
   "action": {
-    "default_title": "Open Tabbatical",
-    "default_popup": "src/sidepanel/index.html"
+    "default_title": "Open Tabbatical"
   },
   "icons": {
     "16": "src/icons/icon16.png",
