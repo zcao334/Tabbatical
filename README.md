@@ -127,10 +127,11 @@ ordinary time to spend reading one page. State that has to outlive an event goes
 but `chrome.storage` does, so a snooze is a stored entry that an alarm merely triggers. Startup
 reconciles the two: anything overdue wakes, anything pending gets its alarm re-armed.
 
-**`chrome.sidePanel.open()` requires a user gesture**, so no alarm can open the panel. The daily
-prompt is therefore a notification, and clicking it tries the panel and falls back to a tab —
-whether a notification click counts as a gesture is undocumented, so both paths have to be good
-outcomes rather than one being an error case. That prompt also rides the existing half-hourly
+**`chrome.sidePanel.open()` requires a user gesture**, so no alarm can open the panel — and a
+notification click doesn't count as one either, which the docs don't say and only testing
+settles. The daily prompt is therefore a notification that opens the review in a tab, focusing
+the window on the way, since a click that arrives from another application would otherwise open
+something invisible behind an unfocused browser. The prompt also rides the existing half-hourly
 alarm rather than owning a daily one, since a daily alarm can't fire while Chrome is closed and
 would drift by however long the browser was shut.
 

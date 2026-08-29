@@ -13,6 +13,7 @@ import {
 } from '../shared/prompt';
 import { countDueForReview, scoreTrackedTabs } from '../shared/review';
 import { getPromptConfig, getPromptState, setLastPromptedAt } from '../shared/storage';
+import { focusTab } from '../shared/tabs';
 
 /**
  * A fixed id, so there is only ever one prompt outstanding. Chrome would
@@ -51,15 +52,15 @@ export async function maybePromptReview(now: number = Date.now()): Promise<void>
     // later — turning one prompt a day into a prompt every half hour.
     await setLastPromptedAt(now);
 
-    // Retract yesterday's prompt before posting today's, even though the id
-    // is the same. Creating with an id that is still in the notification
-    // centre *updates it silently* rather than announcing it — so a user who
-    // never dismissed the last one would simply stop being told, which is the
-    // one failure this whole feature exists to avoid. Clearing first costs an
-    // API call and turns a silent update into a real alert.
-    // Failing to retract is not a reason to stay silent: lastPromptedAt is
-    // already written, so bailing here would cost the user the whole day's
-    // prompt over a notification that may not even have existed.
+    // Retract yesterday's prompt before posting today's, even though the id is
+    // the same. Creating with an id that is still in the notification centre
+    // *updates it silently* rather than announcing it — so a user who never
+    // dismissed the last one would simply stop being told, which is the one
+    // failure this whole feature exists to avoid.
+    //
+    // Caught separately: lastPromptedAt is already written, so bailing on a
+    // failed retraction would cost the user the whole day's prompt over a
+    // notification that may not even have existed.
     try {
       await chrome.notifications.clear(NOTIFICATION_ID);
     } catch (error) {
@@ -85,27 +86,36 @@ export async function maybePromptReview(now: number = Date.now()): Promise<void>
 /**
  * Open the review surface.
  *
- * Tries the side panel first, since that's where the digest lives and it keeps
- * the user's tab strip alone. sidePanel.open() needs a user gesture, and
- * whether a notification click counts as one is undocumented — so the tab is
- * not a fallback for failure so much as the other half of a coin flip, and it
- * has to be as good an outcome.
+ * The side panel is tried first, since that's where the digest lives and it
+ * leaves the tab strip alone — but sidePanel.open() requires a user gesture,
+ * and a notification click is not one. Measured, not assumed: it fails and the
+ * tab opens instead, every time. The attempt stays because it costs one call
+ * and would start working on its own if Chrome ever widened what counts, and
+ * it fails silently because a tab is the expected outcome rather than an error.
+ *
+ * Either way the window is focused. The user clicked a notification, which is
+ * often from another application entirely; opening a tab behind an unfocused
+ * Chrome means nothing visibly happens and the review waits, unseen, for them
+ * to switch over on their own — which is the same ignorable outcome the prompt
+ * exists to escape.
  */
 export async function openReview(): Promise<void> {
   try {
     const window = await chrome.windows.getLastFocused();
     if (window.id != null) {
       await chrome.sidePanel.open({ windowId: window.id });
+      await chrome.windows.update(window.id, { focused: true });
       return;
     }
-  } catch (error) {
-    console.warn('[Tabbatical] Could not open the side panel from a notification', error);
+  } catch {
+    // Expected on every current Chrome build; fall through to the tab.
   }
 
   try {
-    await chrome.tabs.create({ url: chrome.runtime.getURL(PANEL_PATH) });
+    const tab = await chrome.tabs.create({ url: chrome.runtime.getURL(PANEL_PATH) });
+    await focusTab(tab);
   } catch (error) {
-    console.error('[Tabbatical] Could not open the review tab either', error);
+    console.error('[Tabbatical] Could not open the review tab', error);
   }
 }
 

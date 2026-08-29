@@ -19,7 +19,9 @@ const notificationsCreate =
   vi.fn(async (_id: string, _options: chrome.notifications.NotificationOptions) => NOTIFICATION_ID);
 const notificationsClear = vi.fn(async () => true);
 const sidePanelOpen = vi.fn(async () => {});
-const tabsCreate = vi.fn(async () => ({}) as chrome.tabs.Tab);
+const tabsCreate = vi.fn(async () => ({ id: 42, windowId: 9 }) as chrome.tabs.Tab);
+const tabsUpdate = vi.fn(async () => ({}) as chrome.tabs.Tab);
+const windowsUpdate = vi.fn(async () => ({}) as chrome.windows.Window);
 const getLastFocused = vi.fn(async () => ({ id: 7 }) as chrome.windows.Window);
 
 vi.stubGlobal('chrome', {
@@ -34,8 +36,8 @@ vi.stubGlobal('chrome', {
   tabGroups: { query: async () => [] },
   notifications: { create: notificationsCreate, clear: notificationsClear },
   sidePanel: { open: sidePanelOpen },
-  tabs: { create: tabsCreate },
-  windows: { getLastFocused },
+  tabs: { create: tabsCreate, update: tabsUpdate },
+  windows: { getLastFocused, update: windowsUpdate },
   runtime: { getURL: (path: string) => `chrome-extension://abc/${path}` },
 });
 
@@ -274,5 +276,33 @@ describe('a prompt following an unanswered one', () => {
     await maybePromptReview(NOW);
 
     expect(notificationsCreate).toHaveBeenCalledOnce();
+  });
+});
+
+describe('bringing the browser forward', () => {
+  it('focuses the window when the review opens in a tab', async () => {
+    // The click often comes from another application, so a tab opened behind
+    // an unfocused Chrome means nothing visibly happens — the review sits
+    // unseen, which is the outcome the prompt exists to escape.
+    sidePanelOpen.mockRejectedValueOnce(new Error('user gesture required'));
+
+    await openReview();
+
+    expect(tabsCreate).toHaveBeenCalled();
+    expect(windowsUpdate).toHaveBeenCalledWith(9, { focused: true });
+  });
+
+  it('focuses the window when the side panel opens', async () => {
+    await openReview();
+
+    expect(windowsUpdate).toHaveBeenCalledWith(7, { focused: true });
+  });
+
+  it('opens the review from the notification body, focused', async () => {
+    sidePanelOpen.mockRejectedValueOnce(new Error('user gesture required'));
+
+    await handleNotificationClick(NOTIFICATION_ID);
+
+    expect(windowsUpdate).toHaveBeenCalledWith(9, { focused: true });
   });
 });
