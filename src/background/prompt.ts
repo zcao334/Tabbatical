@@ -30,6 +30,37 @@ const REVIEW_BUTTON = 0;
 /** Where the click lands if the side panel can't be opened programmatically. */
 const PANEL_PATH = 'src/sidepanel/index.html';
 
+/** About what Chrome gives the side panel, so the views aren't laid out twice. */
+const POPUP_WIDTH = 420;
+
+/** Only used when the browser won't say where it is — see reviewWindowBounds. */
+const POPUP_FALLBACK_HEIGHT = 800;
+
+/**
+ * Where to put the review window: against the right edge of the window the
+ * user is looking at, full height, which is where the side panel would have
+ * been.
+ *
+ * Measured from the focused window rather than the screen, so this lands
+ * correctly on a second monitor and on a browser that isn't maximised.
+ * Returns nothing when Chrome won't report bounds — a fullscreen window, for
+ * instance — in which case Chrome's own placement beats a guess.
+ */
+async function reviewWindowBounds(): Promise<chrome.windows.CreateData> {
+  try {
+    const current = await chrome.windows.getLastFocused();
+    const { left, top, width, height } = current;
+
+    if (left != null && top != null && width != null && height != null) {
+      return { left: left + width - POPUP_WIDTH, top, height };
+    }
+  } catch {
+    // Fall through to letting Chrome decide.
+  }
+
+  return { height: POPUP_FALLBACK_HEIGHT };
+}
+
 /**
  * Fire the prompt if this is the moment for it.
  *
@@ -86,18 +117,21 @@ export async function maybePromptReview(now: number = Date.now()): Promise<void>
 /**
  * Open the review surface.
  *
- * The side panel is tried first, since that's where the digest lives and it
- * leaves the tab strip alone — but sidePanel.open() requires a user gesture,
- * and a notification click is not one. Measured, not assumed: it fails and the
- * tab opens instead, every time. The attempt stays because it costs one call
- * and would start working on its own if Chrome ever widened what counts, and
- * it fails silently because a tab is the expected outcome rather than an error.
+ * The side panel is tried first, since that's the real thing — but
+ * sidePanel.open() requires a user gesture and a notification click is not
+ * one. Measured, not assumed: it fails every time on current Chrome. The
+ * attempt stays because it costs one call and would start working on its own
+ * if Chrome ever widened what counts, and it fails silently because the
+ * fallback is the expected path rather than an error.
  *
- * Either way the window is focused. The user clicked a notification, which is
- * often from another application entirely; opening a tab behind an unfocused
- * Chrome means nothing visibly happens and the review waits, unseen, for them
- * to switch over on their own — which is the same ignorable outcome the prompt
- * exists to escape.
+ * That fallback is a panel-shaped window rather than a tab. A tab-decluttering
+ * extension answering a prompt by adding a tab is working against itself, and
+ * the digest is laid out for a narrow column anyway.
+ *
+ * Either way the window is focused. The click usually arrives from another
+ * application entirely, so opening something behind an unfocused Chrome means
+ * nothing visibly happens and the review waits, unseen — the same ignorable
+ * outcome the prompt exists to escape.
  */
 export async function openReview(): Promise<void> {
   try {
@@ -108,14 +142,32 @@ export async function openReview(): Promise<void> {
       return;
     }
   } catch {
-    // Expected on every current Chrome build; fall through to the tab.
+    // Expected on every current Chrome build; fall through to the window.
   }
 
+  const url = chrome.runtime.getURL(PANEL_PATH);
+
   try {
-    const tab = await chrome.tabs.create({ url: chrome.runtime.getURL(PANEL_PATH) });
-    await focusTab(tab);
+    // Reuse a review window that's already up. Prompts can be answered twice —
+    // the body and the button both land here — and a second identical window
+    // is the kind of mess this extension is supposed to prevent. Found by
+    // querying rather than by remembering, since the worker holding an id
+    // would forget it on its next unload.
+    const [existing] = await chrome.tabs.query({ url });
+    if (existing) {
+      await focusTab(existing);
+      return;
+    }
+
+    await chrome.windows.create({
+      url,
+      type: 'popup',
+      width: POPUP_WIDTH,
+      focused: true,
+      ...(await reviewWindowBounds()),
+    });
   } catch (error) {
-    console.error('[Tabbatical] Could not open the review tab', error);
+    console.error('[Tabbatical] Could not open the review window', error);
   }
 }
 

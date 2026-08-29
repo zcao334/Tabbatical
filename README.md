@@ -129,9 +129,11 @@ reconciles the two: anything overdue wakes, anything pending gets its alarm re-a
 
 **`chrome.sidePanel.open()` requires a user gesture**, so no alarm can open the panel — and a
 notification click doesn't count as one either, which the docs don't say and only testing
-settles. The daily prompt is therefore a notification that opens the review in a tab, focusing
-the window on the way, since a click that arrives from another application would otherwise open
-something invisible behind an unfocused browser. The prompt also rides the existing half-hourly
+settles. The daily prompt is therefore a notification, and answering it opens the review in a
+panel-shaped window docked to the right edge of the browser rather than in a tab — a
+tab-decluttering extension that answers its own prompt by adding a tab is working against
+itself. The window is focused on the way, since a click that arrives from another application
+would otherwise open something invisible behind an unfocused browser. The prompt also rides the existing half-hourly
 alarm rather than owning a daily one, since a daily alarm can't fire while Chrome is closed and
 would drift by however long the browser was shut.
 
