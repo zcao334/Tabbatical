@@ -28,11 +28,19 @@ const ACTIVE_DWELL_MS = 7_000;
 // since the activation it was waiting to confirm is over.
 const pendingActivationTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
-// The toolbar click opens the dropdown (manifest action.default_popup), so
-// there is no openPanelOnActionClick behaviour left to set — the docked panel
-// is reached from the dropdown's own button, which is the only context that
-// carries the user gesture sidePanel.open() demands.
+// The toolbar click opens the dropdown (manifest action.default_popup), and
+// the docked panel is reached from the dropdown's own button — the only
+// context carrying the user gesture sidePanel.open() demands.
 //
+// openPanelOnActionClick is set to false rather than simply left alone.
+// setPanelBehavior writes persistent profile state, so a build that once set
+// it true leaves it true forever; dropping the call would upgrade those
+// profiles into a version where the panel keeps hijacking the toolbar click
+// and the dropdown never appears.
+chrome.sidePanel
+  .setPanelBehavior({ openPanelOnActionClick: false })
+  .catch((error) => console.error('[Tabbatical] Failed to set the action behaviour', error));
+
 // Marking the panel's URL is what lets one document tell which of its three
 // surfaces it is being shown in, and so whether to offer that button at all.
 chrome.sidePanel
