@@ -234,7 +234,7 @@ describe('openReview', () => {
     await openReview();
 
     expect(tabsCreate).toHaveBeenCalledWith({
-      url: 'chrome-extension://abc/src/sidepanel/index.html',
+      url: 'chrome-extension://abc/src/sidepanel/index.html?surface=tab',
     });
   });
 

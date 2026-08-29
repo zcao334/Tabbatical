@@ -6,7 +6,14 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <h1>Tabbatical</h1>
+    <header class="masthead">
+      <h1>Tabbatical</h1>
+      <!-- Shown only in the dropdown, which closes the moment focus leaves it.
+           Hidden by default so the docked panel never offers to open itself. -->
+      <button id="open-panel" class="row-button row-button--quiet" type="button" hidden>
+        Dock to side
+      </button>
+    </header>
 
     <nav class="tabs" role="tablist">
       <button id="tab-digest" class="tab" role="tab" aria-selected="true" aria-controls="view-digest">

@@ -8,6 +8,12 @@ before starting new work; add to it whenever a preference is stated.
 - **Optimize for efficiency and robustness.** Don't trade correctness or
   resilience away to save time or effort. Handle edge cases properly rather
   than noting them and moving on.
+- **Don't evaluate code in terms of how much work it would be.** Judge an
+  approach only on whether it's correct and whether it's useful. Effort isn't a
+  tiebreaker, and it doesn't belong in how options are described either — an
+  option labelled "most work" is being argued against on a basis that doesn't
+  matter here. If one approach is genuinely worse, say why it's worse on the
+  merits; if it's better but larger, that's simply the better approach.
 - **Reuse functions across issues.** If a piece of logic is needed in more than
   one place, factor it into a shared function instead of writing a second
   variant of it.
