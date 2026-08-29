@@ -19,9 +19,7 @@ const notificationsCreate =
   vi.fn(async (_id: string, _options: chrome.notifications.NotificationOptions) => NOTIFICATION_ID);
 const notificationsClear = vi.fn(async () => true);
 const sidePanelOpen = vi.fn(async () => {});
-const windowsCreate = vi.fn(
-  async (_data: chrome.windows.CreateData) => ({ id: 11 }) as chrome.windows.Window,
-);
+const tabsCreate = vi.fn(async () => ({ id: 42, windowId: 9 }) as chrome.tabs.Tab);
 const tabsUpdate = vi.fn(async () => ({}) as chrome.tabs.Tab);
 const windowsUpdate = vi.fn(async () => ({}) as chrome.windows.Window);
 const getLastFocused = vi.fn(
@@ -44,8 +42,8 @@ vi.stubGlobal('chrome', {
   tabGroups: { query: async () => [] },
   notifications: { create: notificationsCreate, clear: notificationsClear },
   sidePanel: { open: sidePanelOpen },
-  tabs: { query: tabsQuery, update: tabsUpdate },
-  windows: { getLastFocused, update: windowsUpdate, create: windowsCreate },
+  tabs: { query: tabsQuery, update: tabsUpdate, create: tabsCreate },
+  windows: { getLastFocused, update: windowsUpdate },
   runtime: { getURL: (path: string) => `chrome-extension://abc/${path}` },
 });
 
@@ -235,20 +233,20 @@ describe('openReview', () => {
 
     await openReview();
 
-    expect(windowsCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ url: 'chrome-extension://abc/src/sidepanel/index.html' }),
-    );
+    expect(tabsCreate).toHaveBeenCalledWith({
+      url: 'chrome-extension://abc/src/sidepanel/index.html',
+    });
   });
 
-  it('does not also open a window when the panel opened fine', async () => {
+  it('does not also open a tab when the panel opened fine', async () => {
     await openReview();
 
-    expect(windowsCreate).not.toHaveBeenCalled();
+    expect(tabsCreate).not.toHaveBeenCalled();
   });
 
   it('survives both routes failing', async () => {
     sidePanelOpen.mockRejectedValueOnce(new Error('nope'));
-    windowsCreate.mockRejectedValueOnce(new Error('also nope'));
+    tabsCreate.mockRejectedValueOnce(new Error('also nope'));
 
     await expect(openReview()).resolves.toBeUndefined();
   });
@@ -301,7 +299,8 @@ describe('bringing the browser forward', () => {
 
     await openReview();
 
-    expect(windowsCreate).toHaveBeenCalledWith(expect.objectContaining({ focused: true }));
+    expect(tabsCreate).toHaveBeenCalled();
+    expect(windowsUpdate).toHaveBeenCalledWith(9, { focused: true });
   });
 
   it('focuses the window when the side panel opens', async () => {
@@ -315,81 +314,40 @@ describe('bringing the browser forward', () => {
 
     await handleNotificationClick(NOTIFICATION_ID);
 
-    expect(windowsCreate).toHaveBeenCalledWith(expect.objectContaining({ focused: true }));
+    expect(windowsUpdate).toHaveBeenCalledWith(9, { focused: true });
   });
 });
 
-describe('the review window', () => {
+describe('reusing an open review', () => {
   beforeEach(() => {
     // The panel route never succeeds from a notification click on current
     // Chrome, so every test here exercises the path users actually get.
     sidePanelOpen.mockRejectedValue(new Error('user gesture required'));
   });
 
-  const created = () => windowsCreate.mock.calls.at(-1)![0];
-
-  it('opens a panel-shaped window rather than a tab', async () => {
-    // Answering a prompt by adding a tab would work against the whole point
-    // of a tab-decluttering extension.
-    await openReview();
-
-    expect(created().type).toBe('popup');
-    expect(created().width).toBe(420);
-  });
-
-  it('sits against the right edge of the window the user is looking at', async () => {
-    // Where the side panel would have been. 100 + 1200 - 420.
-    await openReview();
-
-    expect(created().left).toBe(880);
-    expect(created().top).toBe(50);
-    expect(created().height).toBe(900);
-  });
-
-  it('follows the browser onto a second monitor', async () => {
-    // Measured from the focused window rather than the screen, so a negative
-    // or very large origin is carried through rather than clamped to nothing.
-    getLastFocused.mockResolvedValue({
-      id: 7,
-      left: -1920,
-      top: 0,
-      width: 1000,
-      height: 600,
-    } as chrome.windows.Window);
-
-    await openReview();
-
-    expect(created().left).toBe(-1340);
-  });
-
-  it('lets Chrome place the window when it will not report bounds', async () => {
-    // A fullscreen window reports no usable geometry, and Chrome's own
-    // placement beats a guess.
-    getLastFocused.mockResolvedValue({ id: 7 } as chrome.windows.Window);
-
-    await openReview();
-
-    expect(created().left).toBeUndefined();
-    expect(created().top).toBeUndefined();
-  });
-
-  it('reuses a review window that is already open', async () => {
+  it('reuses a review tab that is already open', async () => {
     // The body and the Review button both land here, so a prompt can be
-    // answered twice — a second identical window is the mess this extension
+    // answered twice — a second identical tab is the mess this extension
     // exists to prevent.
     openReviewTabs = [{ id: 3, windowId: 11 }];
 
     await openReview();
 
-    expect(windowsCreate).not.toHaveBeenCalled();
-    expect(windowsUpdate).toHaveBeenCalledWith(11, { focused: true });
+    expect(tabsCreate).not.toHaveBeenCalled();
+    expect(tabsUpdate).toHaveBeenCalledWith(3, { active: true });
   });
 
-  it('brings a review window forward rather than leaving it buried', async () => {
+  it('brings the reused tab’s window forward rather than leaving it buried', async () => {
     openReviewTabs = [{ id: 3, windowId: 11 }];
 
     await openReview();
 
-    expect(tabsUpdate).toHaveBeenCalledWith(3, { active: true });
+    expect(windowsUpdate).toHaveBeenCalledWith(11, { focused: true });
+  });
+
+  it('opens one when there is nothing to reuse', async () => {
+    await openReview();
+
+    expect(tabsCreate).toHaveBeenCalledOnce();
   });
 });
