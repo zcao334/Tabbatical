@@ -15,9 +15,12 @@ import { countDueForReview, scoreTrackedTabs } from '../shared/review';
 import { getPromptConfig, getPromptState, setLastPromptedAt } from '../shared/storage';
 
 /**
- * A fixed id, so a second prompt replaces the first rather than stacking.
- * Chrome would otherwise queue them, and a column of identical notifications
- * is the exact thing that gets an extension muted.
+ * A fixed id, so there is only ever one prompt outstanding. Chrome would
+ * otherwise queue them, and a column of identical notifications is the exact
+ * thing that gets an extension muted.
+ *
+ * See the clear() in maybePromptReview: a fixed id alone is not enough, and is
+ * actively harmful without it.
  */
 const NOTIFICATION_ID = 'tabbatical:review-prompt';
 
@@ -47,6 +50,21 @@ export async function maybePromptReview(now: number = Date.now()): Promise<void>
     // timestamp untouched and the next tick would try again thirty minutes
     // later — turning one prompt a day into a prompt every half hour.
     await setLastPromptedAt(now);
+
+    // Retract yesterday's prompt before posting today's, even though the id
+    // is the same. Creating with an id that is still in the notification
+    // centre *updates it silently* rather than announcing it — so a user who
+    // never dismissed the last one would simply stop being told, which is the
+    // one failure this whole feature exists to avoid. Clearing first costs an
+    // API call and turns a silent update into a real alert.
+    // Failing to retract is not a reason to stay silent: lastPromptedAt is
+    // already written, so bailing here would cost the user the whole day's
+    // prompt over a notification that may not even have existed.
+    try {
+      await chrome.notifications.clear(NOTIFICATION_ID);
+    } catch (error) {
+      console.warn('[Tabbatical] Could not retract the previous prompt', error);
+    }
 
     await chrome.notifications.create(NOTIFICATION_ID, {
       type: 'basic',

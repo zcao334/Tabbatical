@@ -238,3 +238,41 @@ describe('openReview', () => {
     await expect(openReview()).resolves.toBeUndefined();
   });
 });
+
+describe('a prompt following an unanswered one', () => {
+  it('retracts the previous prompt before posting the next', async () => {
+    // Creating with an id still sitting in the notification centre updates it
+    // silently instead of announcing it, so a user who never dismissed
+    // yesterday's prompt would simply stop being told. Found in the browser:
+    // the first prompt alerted, the next two did not.
+    await readyToPrompt();
+
+    await maybePromptReview(NOW);
+
+    const cleared = notificationsClear.mock.invocationCallOrder[0];
+    const created = notificationsCreate.mock.invocationCallOrder[0];
+    expect(notificationsClear).toHaveBeenCalledWith(NOTIFICATION_ID);
+    expect(cleared).toBeLessThan(created);
+  });
+
+  it('clears before each repeat prompt, not just the first', async () => {
+    await readyToPrompt();
+
+    await maybePromptReview(NOW);
+    await setLastPromptedAt(NOW - PROMPT_INTERVAL_MS - 1);
+    await maybePromptReview(NOW);
+
+    expect(notificationsClear).toHaveBeenCalledTimes(2);
+    expect(notificationsCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it('still posts the prompt when there was nothing to clear', async () => {
+    // The usual case — nothing outstanding — must not be punished for it.
+    await readyToPrompt();
+    notificationsClear.mockRejectedValueOnce(new Error('no such notification'));
+
+    await maybePromptReview(NOW);
+
+    expect(notificationsCreate).toHaveBeenCalledOnce();
+  });
+});
