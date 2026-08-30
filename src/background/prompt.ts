@@ -11,9 +11,9 @@ import {
   promptMessage,
   shouldPrompt,
 } from '../shared/prompt';
-import { countDueForReview, scoreTrackedTabs } from '../shared/review';
+import { countDueForReview, scoreTrackedTabs, type ScoredTab } from '../shared/review';
 import { getPromptConfig, getPromptState, setLastPromptedAt } from '../shared/storage';
-import { focusTab } from '../shared/tabs';
+import { openOrFocusTab } from '../shared/tabs';
 
 /**
  * A fixed id, so there is only ever one prompt outstanding. Chrome would
@@ -39,10 +39,13 @@ const PANEL_PATH = 'src/sidepanel/index.html';
  * a condition on the half-hourly tick means the prompt lands on the first use
  * of the day instead.
  */
-export async function maybePromptReview(now: number = Date.now()): Promise<void> {
+export async function maybePromptReview(
+  now: number = Date.now(),
+  scored?: ScoredTab[],
+): Promise<void> {
   try {
     const [config, state] = await Promise.all([getPromptConfig(), getPromptState()]);
-    const dueCount = countDueForReview(await scoreTrackedTabs(now));
+    const dueCount = countDueForReview(scored ?? (await scoreTrackedTabs(now)));
 
     if (!shouldPrompt({ now, dueCount, config, ...state })) return;
 
@@ -116,21 +119,8 @@ export async function openReview(): Promise<void> {
     // Expected on every current Chrome build; fall through to the tab.
   }
 
-  const url = chrome.runtime.getURL(PANEL_PATH);
-
   try {
-    // Reuse a review tab that's already up. Prompts can be answered twice —
-    // the body and the button both land here — and a second identical tab is
-    // the kind of mess this extension is supposed to prevent. Found by
-    // querying rather than by remembering, since the worker holding a tab id
-    // would forget it on its next unload.
-    const [existing] = await chrome.tabs.query({ url });
-    if (existing) {
-      await focusTab(existing);
-      return;
-    }
-
-    await focusTab(await chrome.tabs.create({ url }));
+    await openOrFocusTab(chrome.runtime.getURL(PANEL_PATH));
   } catch (error) {
     console.error('[Tabbatical] Could not open the review tab', error);
   }

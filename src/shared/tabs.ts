@@ -47,3 +47,21 @@ export async function focusTab(tab: chrome.tabs.Tab): Promise<void> {
   if (tab.id != null) await chrome.tabs.update(tab.id, { active: true });
   if (tab.windowId != null) await chrome.windows.update(tab.windowId, { focused: true });
 }
+
+/**
+ * Go to a URL, using the tab that already has it rather than opening another.
+ *
+ * Both callers reach this from something the user could plausibly click twice
+ * — an archive row and a notification that offers the same action in two
+ * places — and a second copy of a page is precisely the mess this extension
+ * exists to clear up.
+ *
+ * The lookup is a live query rather than anything remembered: the service
+ * worker forgets state on its next unload, and a panel's snapshot goes stale
+ * while the user reads the row. Errors propagate, because one caller reports
+ * them on the row that failed and the other logs them.
+ */
+export async function openOrFocusTab(url: string): Promise<void> {
+  const [existing] = await chrome.tabs.query({ url });
+  await focusTab(existing ?? (await chrome.tabs.create({ url })));
+}

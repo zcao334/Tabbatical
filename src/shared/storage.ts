@@ -160,40 +160,41 @@ export async function replaceLastActiveTab(
 }
 
 /**
- * The user's scoring weights, always complete and always in range.
+ * Read and write access to one stored config object.
  *
- * Sanitized on read rather than trusted from the write path, because the write
- * path isn't the only way this key changes: a downgrade, a synced profile or a
- * hand-edited storage record can all leave something here that the scoring
- * function would otherwise consume as-is.
+ * Sanitized on *read*, not merely on write, because the write path isn't the
+ * only way these keys change: a downgrade, a synced profile or a hand-edited
+ * record can all leave something behind that never went through save.
+ *
+ * Saves are read-modify-write like the maps above — the settings form saves
+ * one field at a time, and a whole-object write would race a second field
+ * saved while the first was still in flight.
  */
-export async function getStalenessConfig(): Promise<StalenessConfig> {
-  const result = await chrome.storage.local.get(STALENESS_CONFIG_KEY);
-  return sanitizeStalenessConfig(result[STALENESS_CONFIG_KEY]);
+function configAccessors<T extends object>(key: string, sanitize: (stored: unknown) => T) {
+  const get = async (): Promise<T> => sanitize((await chrome.storage.local.get(key))[key]);
+
+  return {
+    get,
+    save: async (patch: Partial<T>): Promise<void> => {
+      await chrome.storage.local.set({ [key]: sanitize({ ...(await get()), ...patch }) });
+    },
+  };
 }
 
-/**
- * Change some weights, leaving the rest alone.
- *
- * Read-modify-write like the maps above: the settings form saves one field at
- * a time, and a whole-object write would race a second field saved while the
- * first was still in flight.
- */
-export async function saveStalenessConfig(patch: Partial<StalenessConfig>): Promise<void> {
-  const next = sanitizeStalenessConfig({ ...(await getStalenessConfig()), ...patch });
-  await chrome.storage.local.set({ [STALENESS_CONFIG_KEY]: next });
-}
+const stalenessConfig = configAccessors(STALENESS_CONFIG_KEY, sanitizeStalenessConfig);
+
+/** The user's scoring weights, always complete and always in range. */
+export const getStalenessConfig = stalenessConfig.get;
+
+/** Change some weights, leaving the rest alone. */
+export const saveStalenessConfig = stalenessConfig.save;
+
+const promptConfig = configAccessors(PROMPT_CONFIG_KEY, sanitizePromptConfig);
 
 /** The daily prompt's settings, sanitized on read like the weights. */
-export async function getPromptConfig(): Promise<PromptConfig> {
-  const result = await chrome.storage.local.get(PROMPT_CONFIG_KEY);
-  return sanitizePromptConfig(result[PROMPT_CONFIG_KEY]);
-}
+export const getPromptConfig = promptConfig.get;
 
-export async function savePromptConfig(patch: Partial<PromptConfig>): Promise<void> {
-  const next = sanitizePromptConfig({ ...(await getPromptConfig()), ...patch });
-  await chrome.storage.local.set({ [PROMPT_CONFIG_KEY]: next });
-}
+export const savePromptConfig = promptConfig.save;
 
 /**
  * When the prompt was last shown, and when this browser session began.

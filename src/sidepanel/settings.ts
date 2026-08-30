@@ -10,7 +10,8 @@
  */
 
 import { STALENESS_WEIGHTS } from '../shared/staleness';
-import { PROMPT_BATCH_FIELD, PROMPT_ENABLED_FIELD } from '../shared/prompt';
+import { PROMPT_FIELDS } from '../shared/prompt';
+import type { ConfigField, NumberField } from '../shared/config';
 import {
   getPromptConfig,
   getStalenessConfig,
@@ -21,16 +22,6 @@ import {
 import { REVIEW_STALENESS_THRESHOLD } from '../shared/review';
 import type { StalenessConfig } from '../shared/types';
 import { createRenderGuard } from './components';
-
-/** Everything a field needs to describe itself. Weights already match it. */
-interface NumberFieldSpec {
-  /** Stamped onto the control as data-setting, so a field can be found by name. */
-  key: string;
-  label: string;
-  hint: string;
-  min: number;
-  max: number;
-}
 
 /** Builds the label / control / hint / error scaffold every field shares. */
 function createField(label: string, hint: string, control: HTMLElement): {
@@ -65,7 +56,7 @@ function createField(label: string, hint: string, control: HTMLElement): {
  * and on Enter, which is when they have actually settled on a number.
  */
 function createNumberField(
-  spec: NumberFieldSpec,
+  spec: NumberField<string>,
   value: number,
   onSave: (value: number) => void,
 ): HTMLElement {
@@ -126,6 +117,30 @@ function createHeading(text: string): HTMLElement {
   return heading;
 }
 
+/**
+ * Render one config's fields, each saving only itself.
+ *
+ * Deliberately does not re-render after a save: the field already shows what
+ * was stored, and rebuilding would move the caret out of whichever field the
+ * user tabbed into next.
+ */
+function appendFields<T extends object>(
+  container: HTMLElement,
+  fields: ReadonlyArray<ConfigField<Extract<keyof T, string>>>,
+  values: T,
+  save: (patch: Partial<T>) => void,
+): void {
+  for (const field of fields) {
+    const patchWith = (value: unknown) => save({ [field.key]: value } as Partial<T>);
+
+    container.appendChild(
+      field.kind === 'boolean'
+        ? createToggleField(field, values[field.key] as boolean, patchWith)
+        : createNumberField(field, values[field.key] as number, patchWith),
+    );
+  }
+}
+
 // renderSettings reads storage before it can build anything, so entering the
 // view twice quickly can land two builds on the same container.
 const renderGuard = createRenderGuard();
@@ -138,28 +153,10 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
   container.innerHTML = '';
 
   container.appendChild(createHeading('Daily prompt'));
-  container.appendChild(
-    createToggleField(PROMPT_ENABLED_FIELD, prompt.enabled, (enabled) => {
-      void savePromptConfig({ enabled });
-    }),
-  );
-  container.appendChild(
-    createNumberField(PROMPT_BATCH_FIELD, prompt.batchSize, (batchSize) => {
-      void savePromptConfig({ batchSize });
-    }),
-  );
+  appendFields(container, PROMPT_FIELDS, prompt, (patch) => savePromptConfig(patch));
 
   container.appendChild(createHeading('Scoring'));
-  for (const weight of STALENESS_WEIGHTS) {
-    container.appendChild(
-      // Deliberately not re-rendering after a save: the field already shows
-      // what was stored, and rebuilding would move the caret out of whichever
-      // field the user tabbed into next.
-      createNumberField(weight, config[weight.key], (value) => {
-        void saveStalenessConfig({ [weight.key]: value } as Partial<StalenessConfig>);
-      }),
-    );
-  }
+  appendFields(container, STALENESS_WEIGHTS, config, (patch) => saveStalenessConfig(patch));
 
   const note = document.createElement('p');
   note.className = 'setting-note';

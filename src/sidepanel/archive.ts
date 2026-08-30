@@ -9,7 +9,7 @@ import {
   renderEmptyState,
   renderLoadingState,
 } from './components';
-import { focusTab, getOpenTabsByUrl } from '../shared/tabs';
+import { getOpenTabsByUrl, openOrFocusTab } from '../shared/tabs';
 import { DATE_TIME_FORMAT, formatArchivedAt } from './time';
 
 const renderGuard = createRenderGuard();
@@ -70,17 +70,9 @@ async function restoreEntry(entry: ArchiveEntry, container: HTMLElement): Promis
   armedDelete.clear();
   await rowState.run(
     entry.id,
-    async () => {
-      // Re-read rather than trusting the render's snapshot: the tab may have
-      // been closed in the time the row sat on screen, and creating a tab is
-      // the recoverable mistake of the two.
-      const open = (await getOpenTabsByUrl()).get(entry.url);
-      if (open) {
-        await focusTab(open);
-        return;
-      }
-      await chrome.tabs.create({ url: entry.url });
-    },
+    // Re-checks rather than trusting the render's snapshot: the tab may have
+    // been closed in the time the row sat on screen.
+    () => openOrFocusTab(entry.url),
     { errorMessage: "Couldn't reopen this page", render: () => renderHits(container) },
   );
 }

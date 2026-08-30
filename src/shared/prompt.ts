@@ -10,6 +10,7 @@
  * Kept free of chrome APIs so every one of those rules can be tested directly.
  */
 
+import { sanitizeConfig, type ConfigField } from './config';
 import { MS_PER_DAY, MS_PER_MINUTE } from './types';
 
 export interface PromptConfig {
@@ -105,41 +106,31 @@ export function promptMessage(dueCount: number, config: PromptConfig): string {
 }
 
 /**
- * How the prompt's two settings describe themselves.
+ * How the prompt's settings describe themselves.
  *
- * Same shape as a staleness weight, so the settings form renders both from one
- * pair of field builders rather than growing a second layout for the sake of
- * two controls.
+ * Same list shape as the staleness weights, so the settings form renders both
+ * from the same builders and the same declaration drives validation.
  */
-export const PROMPT_ENABLED_FIELD = {
-  key: 'enabled',
-  label: 'Ask me once a day',
-  hint: 'A notification when tabs are due, so a review starts without you thinking of it.',
-};
+export const PROMPT_FIELDS: ReadonlyArray<ConfigField<keyof PromptConfig & string>> = [
+  {
+    kind: 'boolean',
+    key: 'enabled',
+    label: 'Ask me once a day',
+    hint: 'A notification when tabs are due, so a review starts without you thinking of it.',
+  },
+  {
+    kind: 'number',
+    key: 'batchSize',
+    label: 'Tabs to offer each time',
+    hint: 'Kept small on purpose — a prompt you can finish is one you answer.',
+    min: MIN_BATCH_SIZE,
+    max: MAX_BATCH_SIZE,
+    // "Review 4.5 tabs" is not a thing to ask anyone.
+    integer: true,
+  },
+];
 
-export const PROMPT_BATCH_FIELD = {
-  key: 'batchSize',
-  label: 'Tabs to offer each time',
-  hint: 'Kept small on purpose — a prompt you can finish is one you answer.',
-  min: MIN_BATCH_SIZE,
-  max: MAX_BATCH_SIZE,
-};
-
-/** Coerce a stored record into a usable config, per-key, like the weights. */
+/** Coerce a stored record into a usable config. See sanitizeConfig. */
 export function sanitizePromptConfig(stored: unknown): PromptConfig {
-  const source = (typeof stored === 'object' && stored !== null ? stored : {}) as Record<
-    string,
-    unknown
-  >;
-
-  const config = { ...DEFAULT_PROMPT_CONFIG };
-
-  if (typeof source.enabled === 'boolean') config.enabled = source.enabled;
-  if (typeof source.batchSize === 'number' && Number.isFinite(source.batchSize)) {
-    config.batchSize = Math.round(
-      Math.min(Math.max(source.batchSize, MIN_BATCH_SIZE), MAX_BATCH_SIZE),
-    );
-  }
-
-  return config;
+  return sanitizeConfig(stored, PROMPT_FIELDS, DEFAULT_PROMPT_CONFIG);
 }

@@ -1,3 +1,4 @@
+import { sanitizeConfig, type NumberField } from './config';
 import {
   DEFAULT_STALENESS_CONFIG,
   MS_PER_DAY,
@@ -34,17 +35,15 @@ export function computeStaleness(
  * on it: the settings form renders from it, the sanitizer validates against
  * it, and the bounds below are the only thing standing between a typo in an
  * editable field and a scoring function that ranks nothing.
+ *
+ * Not marked `integer`: unlike a batch size, a fractional weight is a
+ * perfectly good weight.
  */
-export interface StalenessWeight {
-  key: keyof StalenessConfig;
-  label: string;
-  hint: string;
-  min: number;
-  max: number;
-}
+export type StalenessWeight = NumberField<Extract<keyof StalenessConfig, string>>;
 
 export const STALENESS_WEIGHTS: StalenessWeight[] = [
   {
+    kind: 'number',
     key: 'idleDayWeight',
     label: 'Points per idle day',
     hint: 'The only weight that adds. Raise it to have tabs come up for review sooner.',
@@ -52,6 +51,7 @@ export const STALENESS_WEIGHTS: StalenessWeight[] = [
     max: 100,
   },
   {
+    kind: 'number',
     key: 'revisitWeight',
     label: 'Points off per revisit',
     hint: 'How much coming back to a tab protects it from being surfaced.',
@@ -59,6 +59,7 @@ export const STALENESS_WEIGHTS: StalenessWeight[] = [
     max: 100,
   },
   {
+    kind: 'number',
     key: 'maxRevisitPenalty',
     label: 'Most points revisits can take off',
     hint: 'A ceiling, so a much-used tab still comes up for review eventually.',
@@ -66,6 +67,7 @@ export const STALENESS_WEIGHTS: StalenessWeight[] = [
     max: 10_000,
   },
   {
+    kind: 'number',
     key: 'activeGroupPenalty',
     label: 'Points off when in an open group',
     hint: 'A tab in a group you have expanded is somewhere you are working.',
@@ -73,6 +75,7 @@ export const STALENESS_WEIGHTS: StalenessWeight[] = [
     max: 1_000,
   },
   {
+    kind: 'number',
     key: 'pinnedPenalty',
     label: 'Points off when pinned',
     hint: 'Large by default, so pinned tabs stay out of review entirely.',

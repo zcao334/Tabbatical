@@ -15,6 +15,7 @@ import {
   REVIEW_ALARM_PERIOD_MINUTES,
   countDueForReview,
   scoreTrackedTabs,
+  type ScoredTab,
 } from '../shared/review';
 import { maybePromptReview } from './prompt';
 
@@ -34,10 +35,16 @@ export function formatBadgeCount(due: number): string {
   return due > MAX_BADGE_COUNT ? `${MAX_BADGE_COUNT}+` : String(due);
 }
 
-/** Recount and repaint. Never throws: a failed badge must not break a caller. */
-export async function refreshBadge(): Promise<void> {
+/**
+ * Repaint. Never throws: a failed badge must not break a caller.
+ *
+ * Takes an already-scored list when the caller has one, since scoring reads
+ * storage and queries every tab group — work worth doing once per event rather
+ * than once per thing that happens to need it.
+ */
+export async function refreshBadge(scored?: ScoredTab[]): Promise<void> {
   try {
-    const text = formatBadgeCount(countDueForReview(await scoreTrackedTabs()));
+    const text = formatBadgeCount(countDueForReview(scored ?? (await scoreTrackedTabs())));
 
     await chrome.action.setBadgeText({ text });
     if (text) {
@@ -75,6 +82,11 @@ export async function scheduleReviewAlarm(): Promise<void> {
  */
 export async function handleReviewAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
   if (alarm.name !== REVIEW_ALARM_NAME) return;
-  await refreshBadge();
-  await maybePromptReview();
+
+  // Scored once and shared. Both readers ask the same question of the same
+  // data at the same instant, so scoring twice is not just wasted work — it
+  // lets the badge and the prompt disagree about what is due.
+  const scored = await scoreTrackedTabs();
+  await refreshBadge(scored);
+  await maybePromptReview(Date.now(), scored);
 }
