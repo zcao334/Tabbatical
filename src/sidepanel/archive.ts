@@ -9,6 +9,7 @@ import {
   renderEmptyState,
   renderLoadingState,
 } from './components';
+import { getOpenTabsByUrl, openOrFocusTab } from '../shared/tabs';
 import { DATE_TIME_FORMAT, formatArchivedAt } from './time';
 
 const renderGuard = createRenderGuard();
@@ -23,6 +24,16 @@ const renderGuard = createRenderGuard();
 let entries: ArchiveEntry[] = [];
 let searcher: ArchiveSearcher | null = null;
 let searchInput: HTMLInputElement | null = null;
+
+/**
+ * Open tabs by URL, as of the last render.
+ *
+ * An archived page can also be open — restoring one doesn't remove it, since
+ * the capture may be the only surviving copy of a page that has changed or
+ * gone. That makes "this is also open right now" a fact the row has to state,
+ * or the archive quietly misrepresents itself.
+ */
+let openTabsByUrl = new Map<string, chrome.tabs.Tab>();
 
 /** Tracks which rows have a restore or delete in flight, and which last failed. */
 const rowState = createRowState<string>();
@@ -48,14 +59,20 @@ export function initArchiveSearch(input: HTMLInputElement, container: HTMLElemen
   });
 }
 
-/** Reopens an archived page. The entry stays put — Delete is the way to remove it. */
+/**
+ * Opens an archived page. The entry stays put — Delete is the way to remove it.
+ *
+ * Switches to the page when it's already open rather than opening a second
+ * copy of it. Once a row says "open", a button that duplicates the tab is
+ * contradicting the row right next to it.
+ */
 async function restoreEntry(entry: ArchiveEntry, container: HTMLElement): Promise<void> {
   armedDelete.clear();
   await rowState.run(
     entry.id,
-    async () => {
-      await chrome.tabs.create({ url: entry.url });
-    },
+    // Re-checks rather than trusting the render's snapshot: the tab may have
+    // been closed in the time the row sat on screen.
+    () => openOrFocusTab(entry.url),
     { errorMessage: "Couldn't reopen this page", render: () => renderHits(container) },
   );
 }
@@ -86,6 +103,8 @@ function buildRow(hit: SearchHit, container: HTMLElement): HTMLLIElement {
   const busy = rowState.isPending(entry.id);
   const armed = armedDelete.isArmed(entry.id);
 
+  const isOpen = openTabsByUrl.has(entry.url);
+
   const row = createEntryRow({
     title: entry.title,
     // Source lives in the hover text instead of the row: the favicon and title
@@ -93,14 +112,19 @@ function buildRow(hit: SearchHit, container: HTMLElement): HTMLLIElement {
     // the capture time, which appears nowhere else on screen.
     meta: formatArchivedAt(entry.archivedAt),
     faviconUrl: entry.faviconUrl,
-    // Surfaces what Week 2 could only show in DevTools: whether this entry
-    // holds readable text or just the metadata of a page we couldn't read.
-    badge: entry.hasFullText ? undefined : 'metadata only',
+    badge: [
+      // Surfaces what Week 2 could only show in DevTools: whether this entry
+      // holds readable text or just the metadata of a page we couldn't read.
+      ...(entry.hasFullText ? [] : ['metadata only']),
+      ...(isOpen ? ['open'] : []),
+    ],
     snippet: hit.snippet,
     error: rowState.errorFor(entry.id),
     actions: [
       {
-        label: 'Restore',
+        // The label is the honest description of what the click does, which
+        // is also how the user learns this won't leave them with two copies.
+        label: isOpen ? 'Switch to tab' : 'Restore',
         disabled: busy,
         onClick: () => void restoreEntry(entry, container),
       },
@@ -165,6 +189,10 @@ export async function renderArchive(container: HTMLElement): Promise<void> {
   // leaves the previous rows up while the reread happens, and replacing them
   // with "Loading…" for a frame reads as a glitch rather than as progress.
   if (container.childElementCount === 0) renderLoadingState(container, 'Loading your archive…');
+
+  // Read alongside the archive rather than per row: one tabs.query for the
+  // whole render instead of one per entry.
+  openTabsByUrl = await getOpenTabsByUrl();
 
   let loaded: ArchiveEntry[];
   try {

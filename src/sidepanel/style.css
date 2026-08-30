@@ -323,3 +323,33 @@ h1 {
   padding-top: 12px;
   margin: 0 0 12px;
 }
+
+.setting-heading {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #5f6368;
+  margin: 0 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #dadce0;
+}
+
+/* Not the first, which sits directly under the subtitle. */
+.setting-heading ~ .setting-heading {
+  margin-top: 24px;
+}
+
+.setting-toggle {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #1a73e8;
+}
+
+/* Two badges can sit together (metadata-only and open), so they need to keep
+   off each other rather than relying on the meta text for spacing. */
+.row-badge + .row-badge {
+  margin-left: 4px;
+}

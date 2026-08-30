@@ -101,4 +101,20 @@ if (views.digest.list) {
     // would pull the caret out of the field being edited.
     if (changes.stalenessConfig) refresh('digest');
   });
+
+  // The archive marks entries whose page is open right now, and the tab map
+  // is not a usable signal for that: a newly created tab isn't tracked until
+  // it has been dwelt on for several seconds, so restoring a page would leave
+  // its own row claiming the page was closed. These fire immediately.
+  const refreshArchiveIfShowing = () => {
+    if (activeView === 'archive') refresh('archive');
+  };
+
+  chrome.tabs.onCreated.addListener(refreshArchiveIfShowing);
+  chrome.tabs.onRemoved.addListener(refreshArchiveIfShowing);
+  // A tab navigating away from an archived URL stops matching it, and one
+  // navigating to it starts.
+  chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
+    if (changeInfo.url) refreshArchiveIfShowing();
+  });
 }

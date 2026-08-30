@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderSettings } from './settings';
-import { saveStalenessConfig } from '../shared/storage';
+import { savePromptConfig, saveStalenessConfig } from '../shared/storage';
 import { STALENESS_WEIGHTS } from '../shared/staleness';
+import { DEFAULT_PROMPT_CONFIG } from '../shared/prompt';
 import { DEFAULT_STALENESS_CONFIG } from '../shared/types';
 
 let store: Record<string, unknown> = {};
@@ -33,10 +34,18 @@ async function mount(): Promise<HTMLElement> {
 const fields = (container: HTMLElement) =>
   Array.from(container.querySelectorAll<HTMLInputElement>('.setting-input'));
 
+/**
+ * By name rather than by position: the form has more than one section now, so
+ * an index would silently point at a different field as sections are added.
+ */
 function fieldFor(container: HTMLElement, key: string): HTMLInputElement {
-  const index = STALENESS_WEIGHTS.findIndex((weight) => weight.key === key);
-  return fields(container)[index];
+  const input = container.querySelector<HTMLInputElement>(`[data-setting="${key}"]`);
+  if (!input) throw new Error(`No field named "${key}"`);
+  return input;
 }
+
+const weightFields = (container: HTMLElement) =>
+  STALENESS_WEIGHTS.map((weight) => fieldFor(container, weight.key));
 
 function errorFor(input: HTMLInputElement): string {
   return input.closest('.setting')?.querySelector('.setting-error')?.textContent ?? '';
@@ -60,7 +69,7 @@ describe('renderSettings', () => {
   it('shows a field for every weight', async () => {
     const container = await mount();
 
-    expect(fields(container)).toHaveLength(STALENESS_WEIGHTS.length);
+    expect(weightFields(container)).toHaveLength(STALENESS_WEIGHTS.length);
   });
 
   it('starts from the stored weights, not the defaults', async () => {
@@ -84,9 +93,9 @@ describe('renderSettings', () => {
     // validation — the check in the handler would be the only guard.
     const container = await mount();
 
-    for (const [index, weight] of STALENESS_WEIGHTS.entries()) {
-      expect(fields(container)[index].min).toBe(String(weight.min));
-      expect(fields(container)[index].max).toBe(String(weight.max));
+    for (const weight of STALENESS_WEIGHTS) {
+      expect(fieldFor(container, weight.key).min).toBe(String(weight.min));
+      expect(fieldFor(container, weight.key).max).toBe(String(weight.max));
     }
   });
 });
@@ -125,7 +134,7 @@ describe('saving', () => {
     const container = await mount();
     const weight = STALENESS_WEIGHTS[0];
 
-    await enter(fields(container)[0], String(weight.max));
+    await enter(fieldFor(container, weight.key), String(weight.max));
 
     expect(savedConfig()?.[weight.key]).toBe(weight.max);
   });
@@ -203,7 +212,7 @@ describe('rejecting bad input', () => {
 describe('reset', () => {
   const resetButton = (container: HTMLElement) =>
     Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent === 'Reset to defaults',
+      (button) => button.textContent === 'Reset scoring to defaults',
     )!;
 
   it('restores the defaults in storage', async () => {
@@ -239,5 +248,80 @@ describe('reset', () => {
     await flush();
 
     expect(container.querySelectorAll('button')).toHaveLength(1);
+  });
+});
+
+describe('the daily prompt settings', () => {
+  const savedPrompt = () => store.promptConfig as Record<string, unknown> | undefined;
+  const toggle = (container: HTMLElement) => fieldFor(container, 'enabled');
+
+  it('shows the prompt as on by default', async () => {
+    const container = await mount();
+
+    expect(toggle(container).checked).toBe(true);
+  });
+
+  it('reflects the prompt having been turned off', async () => {
+    await savePromptConfig({ enabled: false });
+
+    const container = await mount();
+
+    expect(toggle(container).checked).toBe(false);
+  });
+
+  it('turns the prompt off', async () => {
+    const container = await mount();
+
+    toggle(container).checked = false;
+    toggle(container).dispatchEvent(new Event('change'));
+    await flush();
+
+    expect(savedPrompt()?.enabled).toBe(false);
+  });
+
+  it('saves the batch size', async () => {
+    const container = await mount();
+
+    await enter(fieldFor(container, 'batchSize'), '10');
+
+    expect(savedPrompt()?.batchSize).toBe(10);
+  });
+
+  it('refuses a batch size beyond what anyone would finish', async () => {
+    const container = await mount();
+    const input = fieldFor(container, 'batchSize');
+
+    await enter(input, '500');
+
+    expect(savedPrompt()).toBeUndefined();
+    expect(errorFor(input)).toContain('between');
+  });
+
+  it('keeps the prompt settings out of the scoring config', async () => {
+    // Two different stored records: resetting the weights must not silence
+    // the prompt, and turning the prompt off must not disturb the ranking.
+    const container = await mount();
+
+    await enter(fieldFor(container, 'batchSize'), '10');
+
+    expect(savedConfig()).toBeUndefined();
+    expect(savedPrompt()?.batchSize).toBe(10);
+  });
+
+  it('survives a scoring reset with the prompt untouched', async () => {
+    await savePromptConfig({ enabled: false });
+    const container = await mount();
+
+    Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent === 'Reset scoring to defaults')!
+      .click();
+    await flush();
+
+    expect(savedPrompt()?.enabled).toBe(false);
+    expect(savedConfig()).toEqual(DEFAULT_STALENESS_CONFIG);
+  });
+
+  it('leaves the batch default as something finishable', async () => {
+    expect(DEFAULT_PROMPT_CONFIG.batchSize).toBeLessThanOrEqual(10);
   });
 });

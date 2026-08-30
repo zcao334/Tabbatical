@@ -16,13 +16,14 @@ const alarmsCreate = vi.fn(async (_name: string, _info: chrome.alarms.AlarmCreat
 vi.stubGlobal('chrome', {
   storage: {
     local: {
-      get: async (key: string) => ({ [key]: store[key] }),
+      get: vi.fn(async (key: string) => ({ [key]: store[key] })),
       set: async (items: Record<string, unknown>) => {
         Object.assign(store, items);
       },
     },
   },
   tabGroups: { query: async () => [] },
+  notifications: { create: async () => 'id', clear: async () => true },
   action: { setBadgeText, setBadgeBackgroundColor, setBadgeTextColor },
   alarms: { create: alarmsCreate },
 });
@@ -147,5 +148,22 @@ describe('the review alarm', () => {
     await handleReviewAlarm({ name: 'tabbatical:snooze:abc' } as chrome.alarms.Alarm);
 
     expect(setBadgeText).not.toHaveBeenCalled();
+  });
+});
+
+describe('the review tick', () => {
+  it('scores the tabs once and shares the result', async () => {
+    // The badge and the prompt ask the same question of the same data at the
+    // same instant. Scoring twice is wasted work, and worse, it lets them
+    // disagree about what is due.
+    await trackIdleTabs(2);
+    const storageGet = vi.spyOn(chrome.storage.local, 'get');
+
+    await handleReviewAlarm({ name: REVIEW_ALARM_NAME } as chrome.alarms.Alarm);
+
+    const activityReads = storageGet.mock.calls.filter(
+      (call) => call[0] === 'tabActivityMap',
+    ).length;
+    expect(activityReads).toBe(1);
   });
 });
