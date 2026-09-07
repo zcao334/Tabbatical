@@ -1,2 +1,1 @@
 @PREFERENCES.md
-@AGENTS.md
