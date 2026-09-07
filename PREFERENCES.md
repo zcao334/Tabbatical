@@ -1,6 +1,7 @@
 # Working Preferences
 
-Standing preferences for how work on this project should be done. Consult this before starting new
+Standing preferences for how work on this project should be done. These rules are written for you
+to read and follow, not as documentation for me. Keep them terse. Consult this before starting new
 work; add to it whenever a preference is stated.
 
 ## Code quality
@@ -26,12 +27,6 @@ work; add to it whenever a preference is stated.
 ## Writing style
 
 Applies to READMEs, docs, code comments, commit messages, issue and PR text.
-
-**The README is reference material, not a report to me.** Write it for whoever picks the project up
-cold, which includes a future session with none of this context. I already know how the project
-works, so don't explain it back to me. Record the things that would otherwise have to be
-rediscovered: constraints, gotchas, why something is shaped the way it is, what was tried and
-abandoned. Progress updates and status narration don't belong there.
 
 ### Punctuation and formatting
 
