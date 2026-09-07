@@ -27,6 +27,12 @@ work; add to it whenever a preference is stated.
 
 Applies to READMEs, docs, code comments, commit messages, issue and PR text.
 
+**The README is reference material, not a report to me.** Write it for whoever picks the project up
+cold, which includes a future session with none of this context. I already know how the project
+works, so don't explain it back to me. Record the things that would otherwise have to be
+rediscovered: constraints, gotchas, why something is shaped the way it is, what was tried and
+abandoned. Progress updates and status narration don't belong there.
+
 ### Punctuation and formatting
 
 - No em dashes. A period, comma, colon or pair of parentheses does the same job.
