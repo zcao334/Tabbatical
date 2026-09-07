@@ -1,72 +1,78 @@
 # Tabbatical
 
-A Chrome extension that asks you about your open tabs before you have eighty of them.
+A Chrome extension that nags you about stale tabs so you actually close some.
 
-Tab clutter isn't a storage problem, it's an attention problem: nothing ever prompts you to
-decide about a tab, so nothing ever gets closed. Tabbatical ranks your open tabs by how stale
-they are, asks you about a handful of them once a day, and gives each one three answers —
-**keep**, **snooze**, or **archive**.
+Most tab extensions wait for you to open them. That's the problem. You only open a tab manager
+when you're already thinking about your tabs, which is the one moment you don't need help. The
+rest of the time the pile just grows.
 
-## Why this exists
+Tabbatical starts the conversation instead. It scores your open tabs by how stale they are, puts
+the count on the toolbar badge, and once a day asks if you want to deal with a few of them. Every
+tab gets three options: keep, snooze, or archive.
 
-There is no shortage of tab extensions. They group tabs, suspend them to save memory, save
-sessions, archive pages, or set a tab aside until later. Every individual mechanic here exists
-somewhere else, and several are excellent at it.
+## Why bother
 
-What none of them do is **initiate**. They are all tools you have to remember to open, which
-means they help exactly when you were already thinking about your tabs — the moment you least
-need help. The pile grows during the weeks you aren't thinking about it.
+There are plenty of extensions that group tabs, suspend them to save memory, save sessions, or set
+a tab aside for later. Some are very good. They're all passive.
 
-Tabbatical is built around that gap. The scoring, the badge, the daily prompt and the recurring
-recount all exist so the review starts without you asking for it, and so it arrives as a
-specific, answerable question — *this tab, five days untouched, never revisited: keep it?* —
-rather than a list of two hundred things.
-
-The hard part isn't noticing stale tabs, it's earning the right to interrupt. A prompt that
-arrives at the wrong moment, or twice, teaches you to dismiss it on sight, and a prompt you've
-learned to dismiss is worse than none — so most of the rules in `shared/prompt.ts` are about
-staying quiet.
+The hard part here turned out to be the interrupting, not the scoring. A notification that shows
+up at a bad time, or shows up twice, teaches you to swat it without reading. After that it's
+worthless. Most of the rules in `shared/prompt.ts` are about keeping it quiet.
 
 ## What it does
 
-**Review digest.** Open tabs ranked by a staleness score: idle days count against a tab, while
-revisits, being pinned, and sitting in a tab group you have open all count for it. Pinned tabs
-are effectively exempt. Each row offers Keep, Snooze or Archive.
+### Review digest
 
-**A daily prompt.** Once a day, when tabs are actually due, a notification asks whether you want
-to review a few of them. It names a batch — *review 5* — rather than a backlog, because a bounded
-ask is one you can finish and a total is one you dismiss. Showing it counts as asking, so
-ignoring it buys the same day of quiet that declining does; it can't turn into a thing that
-reappears every half hour. It's off with one toggle, and it cannot fire on a fresh profile,
-because there's nothing stale to prompt about yet.
+Your open tabs, ranked by a staleness score. Idle days push a tab up the list. Revisits, being
+pinned, and sitting in a tab group you have open all push it back down. Pinned tabs basically
+never surface. Each row has Keep, Snooze and Archive on it.
 
-**Toolbar badge.** A count of the tabs currently worth reviewing, recomputed on every change and
-every half hour — because a tab goes stale by sitting still, which fires no event of its own. The
-badge answers *how many*; the prompt asks *now?*. **Pin the extension** (see below) or the badge
-is only visible in the puzzle menu.
+### Daily prompt
 
-**Snooze.** Close a tab now, get it back later — presets or a typed duration (`30m`, `2h`, `3d`,
-`1w`). It survives everything an extension can be put through: the entry is stored and the alarm
-is only a trigger, reconciled on every startup, so a browser restart, an extension update or a
-crash doesn't lose a snoozed tab. A returning tab comes back with its idle clock intact rather
-than pretending to be new. The Snoozed view lists what's pending and can wake or cancel early.
+Once a day, if anything is actually due, a notification asks whether you want to review some tabs.
+It offers a batch ("Review 5") rather than the whole backlog, on the theory that you can finish 5
+and you'll ignore 200.
 
-**Archive with full-text search.** Archiving captures the page's readable text with Mozilla's
-Readability, stores it in IndexedDB, and indexes it for fuzzy search across titles and body text
-with highlighted snippets. Pages that can't be read — a `chrome://` URL, a discarded tab, a site
-without host permission — are archived as metadata and labelled `metadata only` rather than
-failing silently. Host permission is requested per-origin, at the moment you click, and never up
-front.
+Showing the notification counts as asking, so ignoring it buys the same day of quiet that clicking
+"Not today" does. It can't degrade into something that reappears every half hour. One toggle turns
+it off. It won't fire on a fresh profile because nothing is stale yet.
 
-Restoring doesn't remove the entry: the capture may be the only surviving copy of a page that has
-since changed or gone, so reopening one shouldn't quietly destroy it. Instead an entry whose page
-is open right now is marked `open` and offers to switch to that tab rather than opening a second
-copy of it.
+### Toolbar badge
 
-**Tunable scoring.** Every weight in the staleness formula is editable in Settings, next to the
-prompt's own toggle and batch size, and a change re-ranks the digest immediately. The defaults
-are a starting point, not an assertion — how long a tab should sit before it's worth surfacing
-depends entirely on how you work.
+A count of the tabs currently worth reviewing, recomputed on every tab change and every 30 minutes.
+The recount matters because a tab goes stale by sitting still, which fires no event of its own.
+
+Pin the extension or you won't see it. See step 3 below.
+
+### Snooze
+
+Close a tab now, get it back later, either from the presets or by typing a duration (`30m`, `2h`,
+`3d`, `1w`).
+
+The entry lives in storage and the alarm only triggers it, so restarting Chrome, updating the
+extension or crashing won't lose a snoozed tab. Startup reconciles the two: anything overdue wakes
+up, anything still pending gets its alarm re-armed. A tab that comes back keeps its old idle clock
+instead of pretending to be new. The Snoozed view lists what's pending and can wake or cancel
+early.
+
+### Archive with full-text search
+
+Archiving pulls the page's readable text with Mozilla's Readability, stores it in IndexedDB, and
+indexes it for fuzzy search across titles and body text with highlighted snippets.
+
+Some pages can't be read: `chrome://` URLs, discarded tabs, sites you haven't granted permission
+for. Those get archived as metadata and tagged `metadata only`, so at least you know what you got.
+Host permission is requested per site, at the moment you click, never up front.
+
+Restoring doesn't delete the entry. The capture might be the only surviving copy of a page that has
+since changed or disappeared, so reopening one shouldn't quietly destroy it. If the page is already
+open you get an `open` tag and a button to switch to that tab instead of opening a second copy.
+
+### Tunable scoring
+
+Every weight in the staleness formula is editable in Settings, next to the prompt's toggle and
+batch size. Changing one re-ranks the digest immediately. The defaults are guesses. How long a tab
+should sit before it's worth surfacing depends entirely on how you work.
 
 ## Install
 
@@ -77,16 +83,14 @@ npm run build
 
 Then in Chrome:
 
-1. Go to `chrome://extensions` and enable **Developer mode**.
-2. Click **Load unpacked** and select the `dist/` directory.
-3. **Pin the extension**: click the puzzle-piece icon in the toolbar, find Tabbatical, and click
-   the pin. This matters more than it sounds — the badge is the whole proactive mechanism, and
-   an unpinned extension hides it behind the puzzle menu, where you only see it if you were
-   already going to look.
+1. Go to `chrome://extensions` and turn on **Developer mode**.
+2. Click **Load unpacked** and pick the `dist/` directory.
+3. **Pin it.** Click the puzzle-piece icon in the toolbar, find Tabbatical, click the pin. Don't
+   skip this one. The badge is the entire proactive mechanism, and unpinned it sits in the puzzle
+   menu where you'll only see it if you were already going to look.
 4. Click the icon to open the side panel.
 
-Tabs need a few days of real use before the digest has anything interesting to say, since
-everything starts at zero idle days.
+Don't expect much for the first few days. Everything starts at zero idle days.
 
 ## Development
 
@@ -96,49 +100,53 @@ npm run build   # typecheck + production build to dist/
 npm test        # unit tests
 ```
 
-Use `npm run build` rather than `dev` when testing anything that archives a page: the content
-extractor is bundled separately (see `buildExtractor` in `vite.config.ts`) because it's injected
-at runtime rather than declared in the manifest.
+Use `npm run build` rather than `dev` when testing anything that archives a page. The content
+extractor is bundled separately (see `buildExtractor` in `vite.config.ts`) because it's injected at
+runtime rather than declared in the manifest.
+
+The icons are generated from `src/icons/icon.svg` by `tools/render-icons.sh`. That script is macOS
+only, since it shells out to `qlmanage`, so it's kept out of `npm run build`.
 
 ### Layout
 
-| | |
+| Directory | Contents |
 |---|---|
 | `src/background/` | Service worker and its logic: activity tracking, snooze, archive, badge, prompt |
-| `src/shared/` | Everything both surfaces need — storage, scoring, search, types |
+| `src/shared/` | Everything both surfaces need: storage, scoring, search, types |
 | `src/sidepanel/` | The four views and the row components they share |
 | `src/content/` | The injected extractor |
 
-Logic lives in `shared/` or in a named background module rather than in `service-worker.ts`,
-which is kept to listener wiring. That file runs on import and can't be driven by a test, so
-anything in it is untestable by construction — a revisit-counting bug survived three weeks there
-before the logic was moved out to `background/activity.ts` and covered.
+`service-worker.ts` is listener wiring and nothing else. Logic belongs in `shared/` or in a named
+module under `background/`. The file runs on import, so no test can drive it, which makes anything
+living there untestable by construction. A revisit-counting bug sat in it for three weeks before
+the logic moved out to `background/activity.ts` and got covered.
 
-### Notes on the MV3 parts
+### MV3 gotchas
 
-The interesting constraints here come from Manifest V3, and three shaped most of the design:
+Three Manifest V3 constraints shaped most of the design.
 
-**The service worker is unloaded after ~30 seconds idle.** Anything held in a module-scope
-variable is gone by the next event, which is far more often than it sounds — thirty seconds is
-ordinary time to spend reading one page. State that has to outlive an event goes in
-`chrome.storage`, and memory is only ever a cache of it.
+**The service worker is killed after about 30 seconds idle.** Anything in a module-scope variable
+is gone by the next event, and 30 seconds is not long. It's an ordinary amount of time to spend
+reading one page. State that has to survive goes in `chrome.storage`, and memory is only ever a
+cache of it.
 
-**Alarms are less durable than storage.** `chrome.alarms` doesn't survive every lifecycle event,
-but `chrome.storage` does, so a snooze is a stored entry that an alarm merely triggers. Startup
-reconciles the two: anything overdue wakes, anything pending gets its alarm re-armed.
+**Alarms are less durable than storage.** `chrome.alarms` doesn't survive every lifecycle event but
+`chrome.storage` does, which is why a snooze is a stored entry that an alarm merely triggers.
 
-**`chrome.sidePanel.open()` requires a user gesture**, so no alarm can open the panel — and a
-notification click doesn't count as one either, which the docs don't say and only testing
-settles. The daily prompt is therefore a notification that opens the review in a tab, focusing
-the window on the way, since a click that arrives from another application would otherwise open
-something invisible behind an unfocused browser. A panel-shaped popup window was tried instead
-and reverted: on macOS, opening a window pulls the user to a different Space, which is a worse
-interruption than an extra tab. The prompt also rides the existing half-hourly
-alarm rather than owning a daily one, since a daily alarm can't fire while Chrome is closed and
-would drift by however long the browser was shut.
+**`chrome.sidePanel.open()` needs a user gesture.** No alarm can open the panel, and a notification
+click doesn't count as a gesture either, which the docs don't mention anywhere. So the daily prompt
+opens the review in a tab and focuses the window on the way, otherwise a click arriving from
+another application opens something invisible behind an unfocused browser.
+
+A panel-shaped popup window got tried instead and then reverted: on macOS, opening a window drags
+you to a different Space, which is a worse interruption than an extra tab.
+
+The prompt also rides the existing half-hourly alarm rather than owning a daily one. A daily alarm
+can't fire while Chrome is closed, so it would drift by however long the browser was shut.
 
 ## Status
 
-Feature-complete for the planned scope. Review digest, snooze, archive, search, settings, the
-badge and the daily prompt are all implemented and tested; a demo GIF ([#20](https://github.com/zcao334/Tabbatical/issues/20))
-and an Edge compatibility pass ([#13](https://github.com/zcao334/Tabbatical/issues/13)) are open.
+Everything in the planned scope is built and tested: digest, snooze, archive, search, settings,
+badge, daily prompt. Still open are a demo GIF
+([#20](https://github.com/zcao334/Tabbatical/issues/20)) and an Edge compatibility pass
+([#13](https://github.com/zcao334/Tabbatical/issues/13)).
