@@ -1,0 +1,20 @@
+<!--
+  Source of truth for the extension icons. The PNGs beside this file are
+  generated from it by tools/render-icons.sh.
+
+  Designed against the 16px toolbar rendering rather than this 128px one,
+  because 16px is where the icon actually lives and it is unforgiving. Two
+  things were cut for failing there: a crescent moon (the obvious pun on
+  "sabbatical") collapsed into an amber smudge at 16px, and a third tab merged
+  with its neighbour into an indistinct grey mass. What survives is three
+  shapes with hard tonal separation — amber tab, grey tab, white page — which
+  stay legible on both light and dark toolbars.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect x="0" y="0" width="128" height="128" rx="28" fill="#1E293B"/>
+  <!-- The active tab, amber: the one Tabbatical is asking you to deal with. -->
+  <path d="M16 56 V36 q0-10 10-10 h30 q10 0 10 10 v20 z" fill="#F59E0B"/>
+  <!-- A second tab behind it, standing in for everything else still open. -->
+  <path d="M68 56 V44 q0-9 9-9 h26 q9 0 9 9 v12 z" fill="#7B8CA8"/>
+  <rect x="14" y="54" width="100" height="52" rx="12" fill="#F8FAFC"/>
+</svg>
