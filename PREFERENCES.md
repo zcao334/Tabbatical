@@ -21,6 +21,17 @@ before starting new work; add to it whenever a preference is stated.
   existing code that already solves the problem or can be extended. Prefer
   extending what's there over adding a parallel implementation.
 
+## Communication
+
+- **Write only what changes a decision.** Before writing something up, ask
+  whether knowing it would actually affect a choice — what to build, what to
+  fix, what to accept or reject. If it would, say it. If it wouldn't, just do
+  the work. Rejected alternatives, intermediate steps, and the reasoning that
+  led somewhere are all part of doing the job, not part of reporting it.
+  Constraints that will bite later, decisions made on the reader's behalf, and
+  results that came out other than expected do change decisions, so those still
+  get said.
+
 ## Git workflow
 
 These rules are about *kinds* of branch, not particular names. `main` is the
