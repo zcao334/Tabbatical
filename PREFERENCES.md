@@ -31,6 +31,8 @@ before starting new work; add to it whenever a preference is stated.
   Constraints that will bite later, decisions made on the reader's behalf, and
   results that came out other than expected do change decisions, so those still
   get said.
+- **Follow the prose style in [AGENTS.md](AGENTS.md)** for anything written to be read: READMEs,
+  docs, comments, commit messages, issue and PR text.
 
 ## Git workflow
 
