@@ -76,7 +76,7 @@ should sit before it's worth surfacing depends entirely on how you work.
 
 ## Install
 
-Not on the Chrome Web Store, so you build it and load it unpacked.
+Not on the Chrome Web Store yet, so for now you build it and load it unpacked.
 
 ```bash
 npm install
