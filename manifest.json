@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tabbatical",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Proactively review your open tabs and decide what to keep.",
   "permissions": [
     "tabs",
@@ -13,7 +13,10 @@
     "sidePanel",
     "scripting"
   ],
-  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
   "background": {
     "service_worker": "src/background/service-worker.ts",
     "type": "module"
@@ -30,8 +33,8 @@
     }
   },
   "icons": {
-    "16": "src/icons/icon16.png",
-    "48": "src/icons/icon48.png",
-    "128": "src/icons/icon128.png"
+    "16": "src/icons/store16.png",
+    "48": "src/icons/store48.png",
+    "128": "src/icons/store128.png"
   }
 }
