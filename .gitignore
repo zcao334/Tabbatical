@@ -1,3 +1,7 @@
 node_modules/
 dist/
 .DS_Store
+
+# Agent instructions, kept local rather than published.
+CLAUDE.md
+PREFERENCES.md
