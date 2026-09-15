@@ -153,9 +153,12 @@ can't fire while Chrome is closed, so it would drift by however long the browser
 ## Status
 
 Everything in the planned scope is built and tested: digest, snooze, archive, search, settings,
-badge, daily prompt. Still open are a demo GIF
-([#20](https://github.com/zcao334/Tabbatical/issues/20)) and an Edge compatibility pass
-([#13](https://github.com/zcao334/Tabbatical/issues/13)).
+badge, daily prompt.
+
+Next is a Web Store release ([#22](https://github.com/zcao334/Tabbatical/issues/22)), which needs
+the store screenshots from the demo GIF issue ([#20](https://github.com/zcao334/Tabbatical/issues/20))
+first. An Edge compatibility pass ([#13](https://github.com/zcao334/Tabbatical/issues/13)) is a
+stretch goal.
 
 ## License
 
