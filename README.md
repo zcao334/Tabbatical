@@ -76,6 +76,8 @@ should sit before it's worth surfacing depends entirely on how you work.
 
 ## Install
 
+Not on the Chrome Web Store yet, so for now you build it and load it unpacked.
+
 ```bash
 npm install
 npm run build
@@ -97,8 +99,12 @@ Don't expect much for the first few days. Everything starts at zero idle days.
 ```bash
 npm run dev     # watch build
 npm run build   # typecheck + production build to dist/
-npm test        # unit tests
+npm test        # unit tests, 401 across 21 files
 ```
+
+The scoring, prompt timing, storage and search logic are covered; the parts that
+only call chrome APIs are not. `chrome` is stubbed in tests, so the suite runs
+without a browser.
 
 Use `npm run build` rather than `dev` when testing anything that archives a page. The content
 extractor is bundled separately (see `buildExtractor` in `vite.config.ts`) because it's injected at
@@ -147,6 +153,13 @@ can't fire while Chrome is closed, so it would drift by however long the browser
 ## Status
 
 Everything in the planned scope is built and tested: digest, snooze, archive, search, settings,
-badge, daily prompt. Still open are a demo GIF
-([#20](https://github.com/zcao334/Tabbatical/issues/20)) and an Edge compatibility pass
-([#13](https://github.com/zcao334/Tabbatical/issues/13)).
+badge, daily prompt.
+
+Next is a Web Store release ([#22](https://github.com/zcao334/Tabbatical/issues/22)), which needs
+the store screenshots from the demo GIF issue ([#20](https://github.com/zcao334/Tabbatical/issues/20))
+first. An Edge compatibility pass ([#13](https://github.com/zcao334/Tabbatical/issues/13)) is a
+stretch goal.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
