@@ -10,6 +10,11 @@ Tabbatical starts the conversation instead. It scores your open tabs by how stal
 the count on the toolbar badge, and once a day asks if you want to deal with a few of them. Every
 tab gets three options: keep, snooze, or archive.
 
+<img src="docs/screenshot-digest.png" alt="The Tabbatical review digest in the Chrome side panel" width="360">
+
+The digest, with demo data. The 5-day-idle MDN tab sits below the 4-day-idle Stack Overflow one
+because it was revisited twice, which is the scoring doing its job rather than a sorting bug.
+
 ## Why bother
 
 There are plenty of extensions that group tabs, suspend them to save memory, save sessions, or set
