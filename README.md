@@ -165,6 +165,11 @@ the store screenshots from the demo GIF issue ([#20](https://github.com/zcao334/
 first. An Edge compatibility pass ([#13](https://github.com/zcao334/Tabbatical/issues/13)) is a
 stretch goal.
 
+## Privacy
+
+No server, no analytics, no network requests. Everything stays on your machine.
+See [PRIVACY.md](PRIVACY.md).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
